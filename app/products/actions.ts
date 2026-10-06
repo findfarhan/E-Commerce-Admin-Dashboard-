@@ -50,6 +50,18 @@ export async function createProductAction(formData:FormData){
     }),
   });
 
+  await request("/v1/admin/products/"+encodeURIComponent(result.product.id)+"/organization",{
+    method:"PATCH",
+    body:JSON.stringify({
+      vendor:String(formData.get("vendor")||"").trim()||null,
+      productType:String(formData.get("productType")||"").trim()||null,
+      tags:String(formData.get("tags")||"").split(",").map(v=>v.trim()).filter(Boolean),
+      publishedAt:String(formData.get("publishedAt")||"").trim()||null,
+      taxable:formData.get("taxable")==="on",
+      weightGrams:formData.get("weightGrams")?Number(formData.get("weightGrams")):null,
+      searchAttributes:{},
+    }),
+  });
   revalidatePath("/products");
   redirect("/products/"+result.product.id);
 }
@@ -69,6 +81,18 @@ export async function updateProductAction(id:string,formData:FormData){
     }),
   });
 
+  await request("/v1/admin/products/"+encodeURIComponent(id)+"/organization",{
+    method:"PATCH",
+    body:JSON.stringify({
+      vendor:String(formData.get("vendor")||"").trim()||null,
+      productType:String(formData.get("productType")||"").trim()||null,
+      tags:String(formData.get("tags")||"").split(",").map(v=>v.trim()).filter(Boolean),
+      publishedAt:String(formData.get("publishedAt")||"").trim()||null,
+      taxable:formData.get("taxable")==="on",
+      weightGrams:formData.get("weightGrams")?Number(formData.get("weightGrams")):null,
+      searchAttributes:{},
+    }),
+  });
   revalidatePath("/products");
   revalidatePath("/products/"+id);
   redirect("/products/"+id);
@@ -243,4 +267,39 @@ export async function duplicateProductAction(productId:string){
   const result:any=await request("/v1/admin/products/"+encodeURIComponent(productId)+"/duplicate",{method:"POST"});
   revalidatePath("/products");
   redirect("/products/"+result.product.id);
+}
+
+export async function saveProductMetafieldsAction(productId:string,formData:FormData){
+  const values:any[]=[];
+  for(const [key,value] of formData.entries()){
+    if(!key.startsWith("mftype__")) continue;
+    const definitionId=key.slice(8);
+    const type=String(value);
+    const raw=type==="boolean"?formData.get("mf__"+definitionId)==="on":formData.get("mf__"+definitionId);
+    values.push({definitionId,value:raw});
+  }
+  await request("/v1/admin/metafields/product/"+encodeURIComponent(productId),{method:"PUT",body:JSON.stringify({values})});
+  revalidatePath("/products/"+productId);
+}
+
+export async function saveVariantCostAction(productId:string,variantId:string,formData:FormData){
+  await request("/v1/admin/variants/"+encodeURIComponent(variantId)+"/cost",{
+    method:"PATCH",
+    body:JSON.stringify({costAmount:Number(formData.get("costAmount")||0),weightGrams:formData.get("weightGrams")?Number(formData.get("weightGrams")):null}),
+  });
+  revalidatePath("/products/"+productId);
+  revalidatePath("/analytics");
+}
+
+export async function updateMediaAction(productId:string,mediaId:string,formData:FormData){
+  await request("/v1/admin/media/"+encodeURIComponent(mediaId),{method:"PATCH",body:JSON.stringify({
+    altText:String(formData.get("altText")||"").trim()||null,role:String(formData.get("role")||"gallery"),
+    position:Number(formData.get("position")||0),mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+    focalX:Number(formData.get("focalX")||0.5),focalY:Number(formData.get("focalY")||0.5),
+  })});
+  revalidatePath("/products/"+productId);
+}
+export async function deleteMediaAction(productId:string,mediaId:string){
+  await request("/v1/admin/media/"+encodeURIComponent(mediaId),{method:"DELETE"});
+  revalidatePath("/products/"+productId);
 }
