@@ -20,6 +20,11 @@
 - Storefront live search
 - Rate limiting on public commerce endpoints
 - Backend-only Supabase posture with RLS and revoked client grants
+- Bespoke commission requests stored in Supabase and managed from Admin
+- Newsletter/private-frequency subscribers stored in Supabase
+- Guest order lookup with rate limiting and identity verification
+- Live Admin analytics, channels, settings, automations and SEO status
+- External channels shown as disconnected until real provider credentials exist
 
 ## Intentionally deferred external providers
 

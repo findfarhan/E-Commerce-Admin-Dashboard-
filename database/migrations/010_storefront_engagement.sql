@@ -36,3 +36,6 @@ alter table custom_commission_requests enable row level security;
 alter table newsletter_subscribers enable row level security;
 revoke all on table custom_commission_requests from anon,authenticated;
 revoke all on table newsletter_subscribers from anon,authenticated;
+
+grant select,insert,update,delete on custom_commission_requests to render_app;
+grant select,insert,update,delete on newsletter_subscribers to render_app;
