@@ -1,4 +1,5 @@
 "use server";
+function collectionRules(formData:FormData){const rules:any[]=[];for(let i=0;i<5;i++){const field=String(formData.get("ruleField_"+i)||"").trim();const value=String(formData.get("ruleValue_"+i)||"").trim();if(!field||!value)continue;rules.push({field,operator:String(formData.get("ruleOperator_"+i)||"equals"),value});}return rules;}
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {adminMutation} from "@/lib/admin-server";
@@ -14,6 +15,12 @@ export async function createCollectionAction(formData:FormData){
       imageUrl:String(formData.get("imageUrl")||"").trim()||null,
       status:String(formData.get("status")||"active"),
       position:Number(formData.get("position")||0),
+      collectionType:String(formData.get("collectionType")||"manual"),
+      matchType:String(formData.get("matchType")||"all"),
+      rules:collectionRules(formData),
+      publishAt:String(formData.get("publishAt")||"").trim()||null,
+      unpublishAt:String(formData.get("unpublishAt")||"").trim()||null,
+      merchandising:{sort:String(formData.get("merchandisingSort")||"manual")},
     }),
   });
   revalidatePath("/collections");
