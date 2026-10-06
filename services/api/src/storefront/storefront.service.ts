@@ -22,7 +22,79 @@ export class StorefrontService{
       .trim();
   }
 
-  products(){return this.productsService.listStorefront();}
+  async products(filters:any={}){
+    let products=await this.productsService.listStorefront();
+    const q=String(filters?.q||"").trim().toLowerCase();
+    const category=String(filters?.category||"").trim().toLowerCase();
+    const material=String(filters?.material||filters?.metal||"").trim().toLowerCase();
+    const vendor=String(filters?.vendor||"").trim().toLowerCase();
+    const productType=String(filters?.productType||"").trim().toLowerCase();
+    const availability=String(filters?.availability||"").trim();
+    const tag=String(filters?.tag||"").trim().toLowerCase();
+    const minPrice=filters?.minPrice!==undefined?Number(filters.minPrice):null;
+    const maxPrice=filters?.maxPrice!==undefined?Number(filters.maxPrice):null;
+
+    if(q) products=products.filter((product:any)=>[
+      product.name,product.category,product.material,product.vendor,product.productType,product.story,
+      ...(product.tags||[]),JSON.stringify(product.searchAttributes||{})
+    ].some(value=>String(value||"").toLowerCase().includes(q)));
+    if(category) products=products.filter((product:any)=>String(product.category||"").toLowerCase()===category);
+    if(material) products=products.filter((product:any)=>String(product.material||"").toLowerCase().includes(material));
+    if(vendor) products=products.filter((product:any)=>String(product.vendor||"").toLowerCase()===vendor);
+    if(productType) products=products.filter((product:any)=>String(product.productType||"").toLowerCase()===productType);
+    if(tag) products=products.filter((product:any)=>(product.tags||[]).some((value:string)=>value.toLowerCase()===tag)||String(product.tag||"").toLowerCase()===tag);
+    if(availability) products=products.filter((product:any)=>product.availability===availability);
+    if(minPrice!==null&&Number.isFinite(minPrice)) products=products.filter((product:any)=>Number(product.priceAmount)>=minPrice);
+    if(maxPrice!==null&&Number.isFinite(maxPrice)) products=products.filter((product:any)=>Number(product.priceAmount)<=maxPrice);
+
+    if(filters?.collection){
+      const collection=await this.collectionsService.storefrontDetail(String(filters.collection));
+      const wanted=new Set(collection.productHandles||[]);
+      products=products.filter((product:any)=>wanted.has(product.slug));
+    }
+
+    const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
+    const storeResult=await this.db.query<any>("select id from stores where domain=$1 limit 1",[domain]);
+    const storeId=storeResult.rows[0]?.id;
+    if(storeId&&filters?.size){
+      const matched=await this.db.query<any>(
+        `select distinct p.id from products p join product_variants v on v.product_id=p.id
+         join variant_option_values vv on vv.variant_id=v.id join product_option_values ov on ov.id=vv.option_value_id
+         join product_options o on o.id=ov.option_id
+         where p.store_id=$1 and lower(o.name)='size' and lower(ov.value)=lower($2)`,
+        [storeId,String(filters.size)]
+      );
+      const ids=new Set(matched.rows.map((row:any)=>row.id));
+      products=products.filter((product:any)=>ids.has(product.id));
+    }
+
+    const rawMetafields:any[]=[];
+    const mf=filters?.metafield;
+    if(Array.isArray(mf)) rawMetafields.push(...mf);
+    else if(mf) rawMetafields.push(mf);
+    if(filters?.stone) rawMetafields.push("custom.stone_type:"+String(filters.stone));
+    if(filters?.gender) rawMetafields.push("custom.gender:"+String(filters.gender));
+
+    for(const raw of rawMetafields){
+      const text=String(raw);
+      const colon=text.indexOf(":");
+      const dot=text.indexOf(".");
+      if(!storeId||colon<1||dot<1||dot>colon) continue;
+      const namespace=text.slice(0,dot);
+      const key=text.slice(dot+1,colon);
+      const value=text.slice(colon+1);
+      const matched=await this.db.query<any>(
+        `select distinct mv.owner_id as product_id from metafield_values mv join metafield_definitions md on md.id=mv.definition_id
+         where mv.store_id=$1 and mv.owner_type='product' and md.namespace=$2 and md.key=$3 and lower(trim(both '"' from mv.value::text))=lower($4)`,
+        [storeId,namespace,key,value]
+      );
+      const ids=new Set(matched.rows.map((row:any)=>row.product_id));
+      products=products.filter((product:any)=>ids.has(product.id));
+    }
+
+    const limit=Math.min(100,Math.max(1,Number(filters?.limit||100)));
+    return products.slice(0,limit);
+  }
 
   async product(handle:string){
     const detail=await this.productsService.getStorefrontDetailByHandle(handle);
@@ -40,11 +112,14 @@ export class StorefrontService{
       id:p.id,slug:p.handle,name:p.title,price:"Rs. "+Number(p.price_amount).toLocaleString("en-PK"),
       priceAmount:Number(p.price_amount),currency:"PKR",tag:p.tag||"",image:primary,secondaryImage:secondary,
       category:p.category||"Jewelry",story:this.descriptionText(p.description),descriptionHtml:p.description||"",material:p.material||"",
+      vendor:p.vendor||"",productType:p.product_type||"",tags:p.tags||[],searchAttributes:p.search_attributes||{},
+      taxable:p.taxable!==false,weightGrams:p.weight_grams===null?null:Number(p.weight_grams),
       availability:Number(p.inventory)>0?"InStock":"OutOfStock",featured:p.featured,
       options:(detail.options||[]).map((o:any)=>({id:o.id,name:o.name,isVisual:o.is_visual,values:o.values})),
       variants,
       mediaSets:(detail.mediaSets||[]).map((m:any)=>({id:m.id,name:m.name,matchOptions:m.match_options,isDefault:m.is_default})),
       media,
+      metafields:detail.metafields||[],
       seo:seo?{
         title:seo.title||undefined,
         description:seo.meta_description||undefined,
@@ -75,11 +150,10 @@ export class StorefrontService{
     };
   }
 
-  async search(raw:string){
-    const q=String(raw||"").trim().toLowerCase();
+  async search(filters:any){
+    const q=String(filters?.q||"").trim();
     if(q.length<2) return {query:q,items:[]};
-    const products=await this.productsService.listStorefront();
-    const items=products.filter((product:any)=>[product.name,product.category,product.material,product.tag,product.story].some(value=>String(value||"").toLowerCase().includes(q))).slice(0,24);
+    const items=await this.products({...filters,q,limit:Math.min(50,Number(filters?.limit||24))});
     return {query:q,items};
   }
 
@@ -137,11 +211,18 @@ export class StorefrontService{
     };
   }
 
-  config(){
+  async config(){
+    const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
+    const storeResult=await this.db.query<any>("select id,name,currency,prices_include_tax from stores where domain=$1 limit 1",[domain]);
+    const store=storeResult.rows[0];
+    const rates=store?await this.db.query<any>(
+      "select distinct r.name,r.carrier,r.service_code from shipping_rates r join shipping_zones z on z.id=r.zone_id where z.store_id=$1 and z.active=true and r.active=true order by r.name",
+      [store.id]
+    ):{rows:[]};
     return {
-      store:{name:"Jewelry Store",currency:"PKR",locale:"en-PK"},
-      checkout:{paymentMethods:["cod"],shippingMethods:["standard"]},
-      features:{variants:true,responsiveMedia:true,seo:true,multichannel:true,mediaProvider:process.env.MEDIA_STORAGE_PROVIDER||"source-url",dynamicImageTransforms:Boolean(process.env.CLOUDFLARE_IMAGE_RESIZING_BASE_URL)},
+      store:{name:store?.name||"Jewelry Store",currency:store?.currency||"PKR",locale:"en-PK",pricesIncludeTax:Boolean(store?.prices_include_tax)},
+      checkout:{paymentMethods:["cod"],shippingMethods:rates.rows.length?rates.rows:[{name:"Standard",carrier:null,service_code:null}]},
+      features:{variants:true,responsiveMedia:true,seo:true,multichannel:true,metafields:true,smartCollections:true,discounts:true,tax:true,multiLocationInventory:true,mediaProvider:process.env.MEDIA_STORAGE_PROVIDER||"source-url",dynamicImageTransforms:Boolean(process.env.CLOUDFLARE_IMAGE_RESIZING_BASE_URL)},
     };
   }
 }
