@@ -21,7 +21,7 @@ export class ProductsService{
 
   async listAdmin(){
     const storeId=await this.storeId();
-    const sql="select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory, (select count(*)::int from product_variants v where v.product_id=p.id) as variant_count, (select count(*)::int from product_media_sets ms where ms.product_id=p.id) as media_set_count from products p where p.store_id=$1 order by p.created_at asc";
+    const sql="select p.*, (select v.sku from product_variants v where v.product_id=p.id order by v.created_at limit 1) as primary_sku, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory, (select count(*)::int from product_variants v where v.product_id=p.id) as variant_count, (select count(*)::int from product_media_sets ms where ms.product_id=p.id) as media_set_count from products p where p.store_id=$1 order by p.created_at asc";
     const result=await this.db.query<any>(sql,[storeId]);
     return {items:result.rows};
   }
