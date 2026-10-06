@@ -19,17 +19,16 @@ export class CollectionsService{
     const clauses:string[]=[];const params:any[]=[storeId];let i=2;
     const fieldMap:Record<string,string>={category:"p.category",material:"p.material",vendor:"p.vendor",product_type:"p.product_type",tag:"p.tag",status:"p.status",featured:"p.featured::text"};
     for(const rule of rules){
-      const field=String(rule?.field||"");const op=String(rule?.operator||"equals");const value=String(rule?.value??"");
-      let expr:string;
+      const field=String(rule?.field||""),op=String(rule?.operator||"equals"),value=String(rule?.value??"");
+      let expr="";
       if(field.startsWith("metafield:")){
-        const [namespace,key]=field.slice(10).split(".");
-        if(!namespace||!key) continue;
-        params.push(namespace,key,value);const n=i,i2=i+1,i3=i+2;i+=3;
-        const cmp=op==="contains"?`(rm.value #>> '{}') ilike '%'||${i3}||'%'`:op==="not_equals"?`(rm.value #>> '{}')<>${i3}`:`(rm.value #>> '{}')=${i3}`;
-        expr=`exists(select 1 from resource_metafields rm where rm.store_id=p.store_id and rm.resource_type='product' and rm.resource_id=p.id and rm.namespace=${n} and rm.key=${i2} and ${cmp})`;
+        const [namespace,key]=field.slice(10).split(".");if(!namespace||!key) continue;
+        const pn="$"+i++,pk="$"+i++,pv="$"+i++;params.push(namespace,key,value);
+        const cmp=op==="contains"?"(rm.value #>> '{}') ilike '%'||"+pv+"||'%'":op==="not_equals"?"(rm.value #>> '{}')<>"+pv:"(rm.value #>> '{}')="+pv;
+        expr="exists(select 1 from resource_metafields rm where rm.store_id=p.store_id and rm.resource_type='product' and rm.resource_id=p.id and rm.namespace="+pn+" and rm.key="+pk+" and "+cmp+")";
       }else{
-        const col=fieldMap[field];if(!col) continue;params.push(value);const n=i++;
-        expr=op==="contains"?`coalesce(${col},'') ilike '%'||${n}||'%'`:op==="not_equals"?`coalesce(${col},'')<>${n}`:`coalesce(${col},'')=${n}`;
+        const col=fieldMap[field];if(!col) continue;const pv="$"+i++;params.push(value);
+        expr=op==="contains"?"coalesce("+col+",'') ilike '%'||"+pv+"||'%'":op==="not_equals"?"coalesce("+col+",'')<>"+pv:"coalesce("+col+",'')="+pv;
       }
       clauses.push(expr);
     }
