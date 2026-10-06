@@ -211,12 +211,20 @@ export class ProductsService{
     if(!body?.sku||body.price===undefined||!body?.selectedOptions){
       throw new BadRequestException("sku, price and selectedOptions are required");
     }
+    const price=Number(body.price);
+    const inventory=Number(body.inventory??0);
+    const compareAt=body.compareAtPrice===null||body.compareAtPrice===undefined?null:Number(body.compareAtPrice);
+    const status=String(body.status||"active");
+    if(!Number.isFinite(price)||price<0) throw new BadRequestException("Variant price must be a non-negative number");
+    if(!Number.isInteger(inventory)||inventory<0) throw new BadRequestException("Variant inventory must be a non-negative whole number");
+    if(compareAt!==null&&(!Number.isFinite(compareAt)||compareAt<0)) throw new BadRequestException("Compare-at price must be non-negative");
+    if(!["active","draft"].includes(status)) throw new BadRequestException("Invalid variant status");
 
     const variantId=randomUUID();
     await this.db.transaction(async client=>{
       await client.query(
         "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id) values($1,$2,$3,$4,$5,$6,$7,$8)",
-        [variantId,productId,body.sku,Number(body.price),body.compareAtPrice??null,Number(body.inventory||0),body.status??"active",body.mediaSetId??null]
+        [variantId,productId,String(body.sku).trim(),price,compareAt,inventory,status,body.mediaSetId??null]
       );
 
       for(const [name,value] of Object.entries(body.selectedOptions as Record<string,string>)){
@@ -305,7 +313,9 @@ export class ProductsService{
     const compareAt=body?.compareAtPrice!==undefined?(body.compareAtPrice===null?null:Number(body.compareAtPrice)):current.compare_at_price;
     const status=body?.status!==undefined?String(body.status):current.status;
     const mediaSetId=body?.mediaSetId!==undefined?(body.mediaSetId||null):current.media_set_id;
-    if(!sku||price<0) throw new BadRequestException("Invalid variant values");
+    if(!sku||!Number.isFinite(price)||price<0) throw new BadRequestException("Invalid variant values");
+    if(compareAt!==null&&(!Number.isFinite(Number(compareAt))||Number(compareAt)<0)) throw new BadRequestException("Invalid compare-at price");
+    if(!["active","draft"].includes(status)) throw new BadRequestException("Invalid variant status");
     await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,status=$4,media_set_id=$5,updated_at=now() where id=$6",[sku,price,compareAt,status,mediaSetId,variantId]);
     return this.getAdminDetail(productId);
   }
@@ -321,7 +331,7 @@ export class ProductsService{
     if(!detail.options.length) throw new BadRequestException("Add product options before generating variants");
     const basePrice=Number(body?.price);
     const inventory=Number(body?.inventory??0);
-    if(!Number.isFinite(basePrice)||basePrice<0||inventory<0) throw new BadRequestException("Valid price and inventory are required");
+    if(!Number.isFinite(basePrice)||basePrice<0||!Number.isInteger(inventory)||inventory<0) throw new BadRequestException("Valid price and whole-number inventory are required");
 
     const combinations:Record<string,string>[]=[];
     const walk=(index:number,current:Record<string,string>)=>{
