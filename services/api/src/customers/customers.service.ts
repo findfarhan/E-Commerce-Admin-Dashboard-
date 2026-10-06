@@ -33,7 +33,9 @@ export class CustomersService{
     if(!note) throw new BadRequestException("Note is required");
     const customer=await this.db.query("select id from customers where id=$1 and store_id=$2",[id,storeId]);
     if(!customer.rowCount) throw new NotFoundException("Customer not found");
-    const result=await this.db.query<any>("insert into customer_notes(customer_id,note,author) values($1,$2,$3) returning *",[id,note,String(body?.author||"admin")]);
+    const author=String(body?.author||"admin");
+    const result=await this.db.query<any>("insert into customer_notes(customer_id,note,author) values($1,$2,$3) returning *",[id,note,author]);
+    await this.db.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,after_state) values($1,$2,'customer.note_added','customer',$3,$4::jsonb)",[storeId,author,id,JSON.stringify({noteId:result.rows[0].id,note})]);
     return result.rows[0];
   }
 }
