@@ -18,7 +18,7 @@ export default async function CommissionsPage(){
               <td><b>{item.name}</b><small>{item.email}<br/>{item.phone||"No phone"}</small></td>
               <td>{item.signal||"Open brief"}<small>{item.timeline||"No timeline"}</small></td>
               <td>{item.preferred_material||"Open"}<small>{item.budget_range||"Budget not specified"}</small></td>
-              <td style={{maxWidth:360}}>{item.notes}</td>
+              <td style={{maxWidth:360}}>{item.notes}{item.reference_url&&<small style={{display:"block",marginTop:8}}><a href={item.reference_url} target="_blank" rel="noreferrer">Open reference ↗</a></small>}</td>
               <td>
                 <form action={action} style={{display:"flex",gap:8,alignItems:"center"}}>
                   <select name="status" defaultValue={item.status}>
