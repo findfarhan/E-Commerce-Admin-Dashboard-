@@ -18,6 +18,7 @@ import {RedirectsModule} from "./redirects/redirects.module";
 import {EngagementModule} from "./engagement/engagement.module";
 import {OperationsModule} from "./operations/operations.module";
 import {CommerceModule} from "./commerce/commerce.module";
+import {AuthModule} from "./auth/auth.module";
 
 @Module({
   imports:[
@@ -33,6 +34,7 @@ import {CommerceModule} from "./commerce/commerce.module";
     EngagementModule,
     OperationsModule,
     CommerceModule,
+    AuthModule,
     StorefrontModule,
     JobsModule,
     OrdersModule,
