@@ -1,0 +1,5 @@
+"use client";
+import Link from "next/link";
+import {usePathname} from "next/navigation";
+const items=[["/","Command Center"],["/orders","Orders"],["/customers","Customers"],["/products","Products"],["/inbox","Inbox"],["/automations","Automations"],["/analytics","Analytics"],["/channels","Channels"],["/storefront","Storefront"],["/seo","SEO / Discovery"],["/team","Team"],["/settings","Settings"]];
+export function Sidebar(){const p=usePathname();return <aside className="sidebar"><Link href="/" className="admin-brand"><span>JC</span><div><b>JEWELRY CONTROL</b><small>STORE OPERATING SYSTEM</small></div></Link><nav className="sidebar-nav">{items.map(([href,label])=><Link key={href} href={href} className={p===href?"active":""}><span>{label}</span></Link>)}</nav><div className="sidebar-foot"><div className="infra-state"><i className="pulse"/><div><b>Jewelry Store</b><small>Render + Vercel + R2</small></div></div><div className="render-free-note">Free-tier architecture · single-store mode</div></div></aside>}

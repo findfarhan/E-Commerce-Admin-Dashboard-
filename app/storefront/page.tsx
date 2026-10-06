@@ -1,0 +1,12 @@
+import {PageHeader} from "@/components/page-header";
+
+const endpoints=[
+  ["GET","/v1/storefront/products","Product listing"],
+  ["GET","/v1/storefront/products/:handle","Product + variants + media"],
+  ["GET","/v1/storefront/collections","Collections"],
+  ["GET","/v1/storefront/navigation/:handle","Navigation"],
+  ["GET","/v1/storefront/content/:type/:handle","Content/metaobjects"],
+  ["GET","/v1/storefront/config","Store config + SEO defaults"],
+];
+
+export default function Storefront(){return <><PageHeader eyebrow="HEADLESS CHANNEL" title="Storefront API" description="Commerce engine stays independent from the Jewelry Store theme, so any future frontend can consume the same semantic contract."/><section className="channel-hero"><article className="panel channel-card"><div className="channel-card-head"><div><span>ONLINE STORE</span><h2>Jewelry Store</h2><p>Vercel frontend consuming the Render Storefront API.</p></div><span className="status-pill success">connected</span></div><div className="channel-url"><code>https://jewelry-store-lime.vercel.app</code><span>LIVE</span></div><div className="channel-contract-grid"><div className="channel-contract"><span>CATALOG</span><b>Canonical</b><small>Products / variants / inventory</small></div><div className="channel-contract"><span>MEDIA</span><b>Cloudflare R2</b><small>Responsive renditions + focal crops</small></div><div className="channel-contract"><span>THEME</span><b>Independent</b><small>No CSS or layout in backend</small></div></div></article><article className="panel headless-rule"><span>DESIGN INDEPENDENCE</span><h3>Shopify-style separation</h3><p>Backend returns semantic commerce data. Storefront decides typography, layout, animations and interactions.</p><div className="separation-diagram"><div><span>ADMIN / CRM</span><b>/v1/admin/*</b></div><div className="separation-arrow">↓</div><div><span>RENDER COMMERCE CORE</span><b>Postgres + R2 + jobs</b></div><div className="separation-arrow">↓</div><div><span>STOREFRONT</span><b>/v1/storefront/*</b></div></div></article></section><article className="panel"><div className="panel-head"><div><span>PUBLIC CONTRACT</span><h2>Storefront endpoints</h2></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>METHOD</th><th>ENDPOINT</th><th>PURPOSE</th></tr></thead><tbody>{endpoints.map(([method,endpoint,purpose])=><tr key={endpoint}><td>{method}</td><td><code>{endpoint}</code></td><td>{purpose}</td></tr>)}</tbody></table></div></article></>}

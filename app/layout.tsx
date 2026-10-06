@@ -1,0 +1,3 @@
+import type {Metadata} from "next";import "./globals.css";import {AppShell} from "@/components/app-shell";
+export const metadata:Metadata={title:"Jewelry Control",description:"Admin CRM and commerce operating system for Jewelry Store"};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en" data-theme="dark"><body><AppShell>{children}</AppShell></body></html>}

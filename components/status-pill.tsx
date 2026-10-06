@@ -1,0 +1,1 @@
+export function StatusPill({children,tone="neutral"}:{children:React.ReactNode;tone?:string}){return <span className={"status-pill "+tone}>{children}</span>}

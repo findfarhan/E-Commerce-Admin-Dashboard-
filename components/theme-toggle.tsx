@@ -1,0 +1,2 @@
+"use client";
+export function ThemeToggle(){return <button className="top-icon" aria-label="Toggle theme" onClick={()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==="light"?"dark":"light"}}>◐</button>}

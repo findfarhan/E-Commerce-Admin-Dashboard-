@@ -1,0 +1,13 @@
+export type Store={id:string;name:string;domain:string;platform:string;status:"healthy"|"attention"|"offline";currency:string;timezone:string;ordersToday:number;revenueToday:number;customers:number;syncLagSeconds:number;lastSyncAt:string};
+export type Order={id:string;storeId:string;number:string;customer:string;email:string;total:number;status:string;paymentStatus:string;items:number;createdAt:string};
+export type Customer={id:string;storeId:string;name:string;email:string;segment:string;orders:number;lifetimeValue:number;lastOrderAt:string};
+export type Product={id:string;storeId:string;sku:string;name:string;inventory:number;price:number;status:string;sales30d:number;variantCount:number;mediaSetCount:number};
+export type ProductOptionValue={id:string;value:string;swatchColor?:string};
+export type ProductOption={id:string;name:string;isVisual:boolean;values:ProductOptionValue[]};
+export type ProductVariant={id:string;productId:string;sku:string;title:string;price:number;inventory:number;selectedOptions:Record<string,string>;status:"active"|"draft"};
+export type ProductMediaSet={id:string;productId:string;name:string;matchOptions:Record<string,string>;imageUrls:string[];isDefault?:boolean};
+export type Conversation={id:string;storeId:string;customer:string;channel:string;subject:string;preview:string;unread:boolean;priority:string;updatedAt:string};
+export type Automation={id:string;storeId:string;name:string;trigger:string;action:string;status:string;runs30d:number;successRate:number};
+export type SeoDocument={id:string;storeId:string;resourceType:string;resourceId?:string;locale:string;title:string;metaDescription:string;canonicalPath:string;index:boolean;follow:boolean;socialImageUrl:string|null;schemaType:string;score:number;updatedAt:string};
+export type SalesChannel={id:string;storeId:string;key:string;name:string;type:string;status:string;externalAccount:string;catalogCount:number;lastSyncAt:string;capabilities:string[]};
+export type ChannelListing={id:string;storeId:string;channelId:string;productId:string;status:string;externalId:string;titleOverride:string|null;descriptionOverride:string|null;categoryExternalId:string|null;priceOverride:number|null;mediaSetId:string|null;syncStatus:string;lastSyncAt:string;error:string|null};
