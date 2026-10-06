@@ -26,4 +26,9 @@ export class SeoService{
     const result=await this.db.query<any>("insert into seo_documents(store_id,resource_type,resource_id,locale,title,meta_description,canonical_path,robots_index,robots_follow,schema_type,metadata) values($1,$2,$3,'en-PK',$4,$5,$6,$7,$8,$9,$10::jsonb) on conflict(store_id,resource_type,resource_id,locale) do update set title=excluded.title,meta_description=excluded.meta_description,canonical_path=excluded.canonical_path,robots_index=excluded.robots_index,robots_follow=excluded.robots_follow,schema_type=excluded.schema_type,metadata=excluded.metadata returning *",[storeId,resourceType,resourceId,body.title??null,body.metaDescription??null,canonicalPath,body.index!==false,body.follow!==false,body.schemaType??null,JSON.stringify(body.metadata||{})]);
     return result.rows[0];
   }
+
+  async storefront(resourceType:string,resourceId:string){
+    return this.get(resourceType,resourceId);
+  }
+
 }

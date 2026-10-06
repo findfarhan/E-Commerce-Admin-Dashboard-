@@ -1,4 +1,4 @@
-import {CanActivate,ExecutionContext,Injectable,TooManyRequestsException} from "@nestjs/common";
+import {CanActivate,ExecutionContext,Injectable,HttpException,HttpStatus} from "@nestjs/common";
 
 type Bucket={count:number;resetAt:number};
 
@@ -21,7 +21,7 @@ export class PublicRateLimitGuard implements CanActivate{
       return true;
     }
     current.count+=1;
-    if(current.count>this.max) throw new TooManyRequestsException("Too many requests. Please try again shortly.");
+    if(current.count>this.max) throw new HttpException("Too many requests. Please try again shortly.",HttpStatus.TOO_MANY_REQUESTS);
     return true;
   }
 }
