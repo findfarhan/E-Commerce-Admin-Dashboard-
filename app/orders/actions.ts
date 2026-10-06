@@ -9,6 +9,9 @@ export async function updateOrderAction(id:string,formData:FormData){
       status:String(formData.get("status")||""),
       paymentStatus:String(formData.get("paymentStatus")||""),
       fulfillmentStatus:String(formData.get("fulfillmentStatus")||""),
+      trackingCarrier:String(formData.get("trackingCarrier")||"").trim(),
+      trackingNumber:String(formData.get("trackingNumber")||"").trim(),
+      trackingUrl:String(formData.get("trackingUrl")||"").trim(),
       notes:String(formData.get("notes")||"").trim()||null,
     }),
   });
