@@ -12,11 +12,9 @@ export class ProductsService{
 
   private async storeId(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
-    const result=await this.db.query<{id:string}>("select id from stores where domain=$1 order by created_at limit 1",[domain]);
-    if(result.rowCount) return result.rows[0].id;
-    const fallback=await this.db.query<{id:string}>("select id from stores order by created_at limit 1");
-    if(!fallback.rowCount) throw new NotFoundException("Store is not configured");
-    return fallback.rows[0].id;
+    const result=await this.db.query<{id:string}>("select id from stores where domain=$1 limit 1",[domain]);
+    if(!result.rowCount) throw new NotFoundException("Store is not configured for "+domain);
+    return result.rows[0].id;
   }
 
   async listAdmin(){
@@ -137,19 +135,31 @@ export class ProductsService{
 
   async createProduct(body:any){
     const storeId=await this.storeId();
-    if(!body?.handle||!body?.title) throw new BadRequestException("handle and title are required");
-    const productId=randomUUID();
+    const handle=String(body?.handle||"").trim().toLowerCase();
+    const title=String(body?.title||"").trim();
+    const status=String(body?.status||"draft");
+    if(!handle||!title) throw new BadRequestException("handle and title are required");
+    if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(handle)) throw new BadRequestException("Handle must use lowercase letters, numbers and single hyphens");
+    if(!["draft","active","archived"].includes(status)) throw new BadRequestException("Invalid product status");
 
+    const hasOpeningVariant=body.price!==undefined;
+    const price=hasOpeningVariant?Number(body.price):0;
+    const inventory=Number(body?.inventory??0);
+    if(hasOpeningVariant&&(!Number.isFinite(price)||price<0)) throw new BadRequestException("A valid non-negative price is required");
+    if(!Number.isInteger(inventory)||inventory<0) throw new BadRequestException("Opening inventory must be a non-negative whole number");
+
+    const productId=randomUUID();
     await this.db.transaction(async client=>{
       await client.query(
         "insert into products(id,store_id,handle,title,description,status,category,material,tag,featured) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-        [productId,storeId,body.handle,body.title,body.description??null,body.status??"draft",body.category??null,body.material??null,body.tag??null,Boolean(body.featured)]
+        [productId,storeId,handle,title,body.description??null,status,body.category??null,body.material??null,body.tag??null,Boolean(body.featured)]
       );
-      if(body.price!==undefined){
-        const sku=body.sku||("JS-"+body.handle.toUpperCase().replace(/[^A-Z0-9]+/g,"-"));
+      if(hasOpeningVariant){
+        const sku=String(body.sku||("JS-"+handle.toUpperCase().replace(/[^A-Z0-9]+/g,"-"))).trim();
+        if(!sku) throw new BadRequestException("SKU is required");
         await client.query(
           "insert into product_variants(product_id,sku,price,inventory,status) values($1,$2,$3,$4,'active')",
-          [productId,sku,Number(body.price),Number(body.inventory||0)]
+          [productId,sku,price,inventory]
         );
       }
     });
