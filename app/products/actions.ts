@@ -69,3 +69,63 @@ export async function updateProductAction(id:string,formData:FormData){
   revalidatePath("/products/"+id);
   redirect("/products/"+id);
 }
+
+
+export async function createOptionAction(id:string,formData:FormData){
+  const name=String(formData.get("name")||"").trim();
+  const values=String(formData.get("values")||"").split(",").map(v=>v.trim()).filter(Boolean);
+  if(!name||!values.length) throw new Error("Option name and at least one value are required.");
+
+  await request("/v1/admin/products/"+encodeURIComponent(id)+"/options",{
+    method:"POST",
+    body:JSON.stringify({
+      name,
+      values,
+      isVisual:formData.get("isVisual")==="on",
+      position:Number(formData.get("position")||0),
+    }),
+  });
+
+  revalidatePath("/products/"+id);
+}
+
+export async function createVariantAction(id:string,formData:FormData){
+  const selectedOptions:Record<string,string>={};
+  for(const [key,value] of formData.entries()){
+    if(key.startsWith("option__")) selectedOptions[key.slice(8)]=String(value);
+  }
+
+  await request("/v1/admin/products/"+encodeURIComponent(id)+"/variants",{
+    method:"POST",
+    body:JSON.stringify({
+      sku:String(formData.get("sku")||"").trim(),
+      price:Number(formData.get("price")||0),
+      compareAtPrice:formData.get("compareAtPrice")?Number(formData.get("compareAtPrice")):null,
+      inventory:Number(formData.get("inventory")||0),
+      status:String(formData.get("status")||"active"),
+      mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+      selectedOptions,
+    }),
+  });
+
+  revalidatePath("/products");
+  revalidatePath("/products/"+id);
+}
+
+export async function createMediaSetAction(id:string,formData:FormData){
+  const matchOptions:Record<string,string>={};
+  for(const [key,value] of formData.entries()){
+    if(key.startsWith("visual__")) matchOptions[key.slice(8)]=String(value);
+  }
+
+  await request("/v1/admin/products/"+encodeURIComponent(id)+"/media-sets",{
+    method:"POST",
+    body:JSON.stringify({
+      name:String(formData.get("name")||"").trim(),
+      matchOptions,
+      isDefault:formData.get("isDefault")==="on",
+    }),
+  });
+
+  revalidatePath("/products/"+id);
+}
