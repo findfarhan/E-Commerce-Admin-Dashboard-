@@ -96,8 +96,13 @@ export class CheckoutService{
 
     const shippingMethod=String(body?.shippingMethod||"standard").trim();
     const shippingAmount=0;
+    const isGift=Boolean(body?.isGift);
+    const giftMessage=isGift?String(body?.giftMessage||"").trim().slice(0,500):null;
 
-    const result=await this.db.query<any>("update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,updated_at=now() where id=$9 and store_id=$10 and status='open' and expires_at>now() returning id,status,currency,subtotal,shipping_amount,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,expires_at",[email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,id,store.id]);
+    const result=await this.db.query<any>(
+      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,updated_at=now() where id=$11 and store_id=$12 and status='open' and expires_at>now() returning id,status,currency,subtotal,shipping_amount,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,expires_at",
+      [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,id,store.id]
+    );
 
     if(!result.rowCount) throw new NotFoundException("Open checkout not found");
     return {...result.rows[0],subtotal:Number(result.rows[0].subtotal),shipping_amount:Number(result.rows[0].shipping_amount||0)};
@@ -165,7 +170,10 @@ export class CheckoutService{
       const orderNumber=numberResult.rows[0].value;
       const total=subtotal+Number(checkout.shipping_amount||0);
 
-      const orderResult=await client.query<any>("insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,total,source_channel,external_id,shipping_address,billing_address,shipping_method,shipping_amount,payment_method,fulfillment_status) values($1,$2,$3,'confirmed','pending',$4,$5,$6,'online_store',$7,$8::jsonb,$9::jsonb,$10,$11,'cod','unfulfilled') returning *",[store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Number(checkout.shipping_amount||0)]);
+      const orderResult=await client.query<any>(
+        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,total,source_channel,external_id,shipping_address,billing_address,shipping_method,shipping_amount,payment_method,fulfillment_status,is_gift,gift_message) values($1,$2,$3,'confirmed','pending',$4,$5,$6,'online_store',$7,$8::jsonb,$9::jsonb,$10,$11,'cod','unfulfilled',$12,$13) returning *",
+        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Number(checkout.shipping_amount||0),Boolean(checkout.is_gift),checkout.gift_message||null]
+      );
       const order=orderResult.rows[0];
 
       for(const entry of locked){
@@ -176,7 +184,7 @@ export class CheckoutService{
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_sale',$4,$5,$6,$7,'checkout')",[store.id,entry.variant.id,order.id,-Number(entry.line.quantity),before,after,"Order "+orderNumber]);
       }
 
-      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod"})]);
+      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift)})]);
       await client.query("update checkout_sessions set status='completed',subtotal=$1,completed_order_id=$2,updated_at=now() where id=$3",[subtotal,order.id,id]);
 
       return {ok:true,idempotent:false,order:{id:order.id,orderNumber:order.order_number,status:order.status,paymentStatus:order.payment_status,fulfillmentStatus:order.fulfillment_status,total:Number(order.total),currency:order.currency}};
