@@ -303,3 +303,12 @@ export async function deleteMediaAction(productId:string,mediaId:string){
   await request("/v1/admin/media/"+encodeURIComponent(mediaId),{method:"DELETE"});
   revalidatePath("/products/"+productId);
 }
+
+export async function requestManagedMediaUploadAction(productId:string,input:{filename:string;contentType:string;altText?:string;role?:string;position?:number;mediaSetId?:string|null;focalX?:number;focalY?:number}){
+  return request("/v1/admin/products/"+encodeURIComponent(productId)+"/media/upload-url",{method:"POST",body:JSON.stringify(input)});
+}
+export async function finalizeManagedMediaUploadAction(productId:string,mediaId:string){
+  const result=await request("/v1/admin/media/"+encodeURIComponent(mediaId)+"/finalize",{method:"POST",body:"{}"});
+  revalidatePath("/products/"+productId);
+  return result;
+}
