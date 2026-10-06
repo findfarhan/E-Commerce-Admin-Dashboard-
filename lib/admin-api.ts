@@ -4,17 +4,24 @@ import {customers as fallbackCustomers,orders as fallbackOrders,products as fall
 const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
 const adminKey=process.env.ADMIN_API_KEY||"";
 
-export async function adminRequest<T>(path:string,revalidate=15):Promise<T|null>{
-  if(!adminKey) return null;
+export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>{
+  if(!adminKey){
+    if(process.env.NODE_ENV==="production") throw new Error("ADMIN_API_KEY is not configured.");
+    return null;
+  }
   try{
     const response=await fetch(apiBase+path,{
       headers:{Accept:"application/json","X-Admin-Key":adminKey},
-      next:{revalidate},
-      signal:AbortSignal.timeout(8000),
+      cache:"no-store",
+      signal:AbortSignal.timeout(20000),
     });
-    if(!response.ok) return null;
+    if(!response.ok){
+      const body=await response.text();
+      throw new Error("Admin API "+response.status+": "+(body||response.statusText));
+    }
     return await response.json() as T;
-  }catch{
+  }catch(error){
+    if(process.env.NODE_ENV==="production") throw error;
     return null;
   }
 }
