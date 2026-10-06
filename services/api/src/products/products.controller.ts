@@ -10,7 +10,8 @@ export class ProductsController{
   @Get(":id") detail(@Param("id") id:string){return this.products.getAdminDetail(id);}
   @Post() create(@Body() body:any){return this.products.createProduct(body);}
   @Patch(":id") update(@Param("id") id:string,@Body() body:any){return this.products.updateProduct(id,body);}
-  @Post(":id/duplicate") duplicateProduct(@Param("id") id:string){return this.products.duplicateProduct(id);}\n  @Delete(":id") archive(@Param("id") id:string){return this.products.archiveProduct(id);}
+  @Post(":id/duplicate") duplicateProduct(@Param("id") id:string){return this.products.duplicateProduct(id);}
+  @Delete(":id") archive(@Param("id") id:string){return this.products.archiveProduct(id);}
 
   @Post(":id/options") createOption(@Param("id") id:string,@Body() body:any){return this.products.createOption(id,body);}
   @Patch(":id/options/:optionId") updateOption(@Param("id") id:string,@Param("optionId") optionId:string,@Body() body:any){return this.products.updateOption(id,optionId,body);}
