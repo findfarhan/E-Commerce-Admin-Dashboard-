@@ -11,5 +11,6 @@ export class StorefrontController{
   @Get("collections") collections(){return this.storefront.collections();}
   @Get("collections/:handle") collection(@Param("handle") handle:string){return this.storefront.collection(handle);}
   @Get("search") search(@Query("q") q:string){return this.storefront.search(q);}
+  @Get("redirect") redirect(@Query("path") path:string){return this.storefront.redirect(path);}
   @Get("config") config(){return this.storefront.config();}
 }

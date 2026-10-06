@@ -1,9 +1,10 @@
-import {Injectable,OnModuleDestroy} from "@nestjs/common";
+import {Injectable,Logger,OnModuleDestroy,OnModuleInit} from "@nestjs/common";
 import {Pool,PoolClient,QueryResultRow} from "pg";
 
 @Injectable()
-export class DatabaseService implements OnModuleDestroy{
+export class DatabaseService implements OnModuleInit,OnModuleDestroy{
   private readonly pool:Pool|null;
+  private readonly logger=new Logger(DatabaseService.name);
 
   constructor(){
     const connectionString=process.env.DATABASE_URL;
@@ -17,6 +18,19 @@ export class DatabaseService implements OnModuleDestroy{
   }
 
   isConfigured(){return Boolean(this.pool);}
+
+  async onModuleInit(){
+    if(!this.pool){
+      this.logger.warn("DATABASE_URL is not configured; database-backed routes will fail.");
+      return;
+    }
+    try{
+      const result=await this.ping();
+      this.logger.log("PostgreSQL connection ready ("+result.latencyMs+"ms)");
+    }catch(error){
+      this.logger.error("PostgreSQL connection failed: "+(error instanceof Error?error.message:String(error)));
+    }
+  }
 
   async query<T extends QueryResultRow=any>(text:string,params:any[]=[]){
     if(!this.pool) throw new Error("DATABASE_URL is not configured");
@@ -40,7 +54,7 @@ export class DatabaseService implements OnModuleDestroy{
   }
 
   async ping(){
-    if(!this.pool) return {configured:false,ok:false};
+    if(!this.pool) return {configured:false,ok:false,latencyMs:null};
     const started=Date.now();
     await this.pool.query("select 1");
     return {configured:true,ok:true,latencyMs:Date.now()-started};

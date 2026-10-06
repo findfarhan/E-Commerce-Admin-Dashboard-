@@ -38,3 +38,19 @@ export async function updateCollectionAction(id:string,formData:FormData){
   revalidatePath("/collections");
   revalidatePath("/collections/"+id);
 }
+
+export async function saveCollectionSeoAction(id:string,handle:string,formData:FormData){
+  await adminMutation("/v1/admin/seo/collection/"+encodeURIComponent(id),{
+    method:"PUT",
+    body:JSON.stringify({
+      title:String(formData.get("seoTitle")||"").trim()||null,
+      metaDescription:String(formData.get("metaDescription")||"").trim()||null,
+      canonicalPath:String(formData.get("canonicalPath")||("/collections/"+handle)).trim(),
+      index:formData.get("index")==="on",
+      follow:true,
+      schemaType:"CollectionPage",
+      metadata:{},
+    }),
+  });
+  revalidatePath("/collections/"+id);
+}

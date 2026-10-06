@@ -7,6 +7,7 @@ import {MediaService} from "../media/media.service";
 export class JobsService{
   private readonly logger=new Logger(JobsService.name);
   private running=false;
+  private cleaning=false;
 
   constructor(private readonly db:DatabaseService,private readonly media:MediaService){}
 
@@ -35,6 +36,20 @@ export class JobsService{
       }
     }finally{
       this.running=false;
+    }
+  }
+
+  @Interval(600000)
+  async expireCheckouts(){
+    if(this.cleaning||!this.db.isConfigured()) return;
+    this.cleaning=true;
+    try{
+      const result=await this.db.query("update checkout_sessions set status='expired',updated_at=now() where status='open' and expires_at<now()");
+      if((result.rowCount||0)>0) this.logger.log("Expired "+result.rowCount+" stale checkout session(s)");
+    }catch(error){
+      this.logger.error("Checkout cleanup failed: "+(error instanceof Error?error.message:String(error)));
+    }finally{
+      this.cleaning=false;
     }
   }
 }

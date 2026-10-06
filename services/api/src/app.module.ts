@@ -14,6 +14,7 @@ import {CheckoutModule} from "./checkout/checkout.module";
 import {CollectionsModule} from "./collections/collections.module";
 import {InventoryModule} from "./inventory/inventory.module";
 import {SeoModule} from "./seo/seo.module";
+import {RedirectsModule} from "./redirects/redirects.module";
 
 @Module({
   imports:[
@@ -25,6 +26,7 @@ import {SeoModule} from "./seo/seo.module";
     CollectionsModule,
     InventoryModule,
     SeoModule,
+    RedirectsModule,
     StorefrontModule,
     JobsModule,
     OrdersModule,

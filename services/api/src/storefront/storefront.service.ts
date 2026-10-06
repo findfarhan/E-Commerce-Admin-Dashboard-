@@ -2,6 +2,7 @@ import {Injectable} from "@nestjs/common";
 import {CollectionsService} from "../collections/collections.service";
 import {ProductsService} from "../products/products.service";
 import {SeoService} from "../seo/seo.service";
+import {RedirectsService} from "../redirects/redirects.service";
 
 @Injectable()
 export class StorefrontService{
@@ -9,6 +10,7 @@ export class StorefrontService{
     private readonly productsService:ProductsService,
     private readonly collectionsService:CollectionsService,
     private readonly seoService:SeoService,
+    private readonly redirectsService:RedirectsService,
   ){}
 
   products(){return this.productsService.listStorefront();}
@@ -50,7 +52,18 @@ export class StorefrontService{
     const collection=await this.collectionsService.storefrontDetail(handle);
     const products=await this.productsService.listStorefront();
     const wanted=new Set(collection.productHandles||[]);
-    return {...collection,products:products.filter((product:any)=>wanted.has(product.slug))};
+    const seo=await this.seoService.storefront("collection",collection.id);
+    return {
+      ...collection,
+      products:products.filter((product:any)=>wanted.has(product.slug)),
+      seo:seo?{
+        title:seo.title||undefined,
+        description:seo.meta_description||undefined,
+        canonicalPath:seo.canonical_path,
+        noindex:seo.robots_index===false,
+        schemaType:seo.schema_type,
+      }:undefined,
+    };
   }
 
   async search(raw:string){
@@ -59,6 +72,12 @@ export class StorefrontService{
     const products=await this.productsService.listStorefront();
     const items=products.filter((product:any)=>[product.name,product.category,product.material,product.tag,product.story].some(value=>String(value||"").toLowerCase().includes(q))).slice(0,24);
     return {query:q,items};
+  }
+
+  async redirect(path:string){
+    const normalized=String(path||"").trim();
+    if(!normalized.startsWith("/")||normalized.startsWith("//")) return null;
+    return this.redirectsService.resolve(normalized);
   }
 
   config(){
