@@ -34,7 +34,9 @@ export class CollectionsService{
     }
     if(!clauses.length) return [];
     const join=collection.match_type==="any"?" or ":" and ";
-    const r=await this.db.query<any>("select p.handle from products p where p.store_id=$1 and p.status='active' and ("+clauses.join(join)+") order by p.created_at",params);
+    const sort=String(collection.merchandising?.sort||"newest");
+    const order=sort==="title"?"p.title asc":sort==="price_asc"?"coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) asc":sort==="price_desc"?"coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) desc":"p.created_at desc";
+    const r=await this.db.query<any>("select p.handle from products p where p.store_id=$1 and p.status='active' and (p.published_at is null or p.published_at<=now()) and ("+clauses.join(join)+") order by "+order,params);
     return r.rows.map((x:any)=>x.handle);
   }
 
