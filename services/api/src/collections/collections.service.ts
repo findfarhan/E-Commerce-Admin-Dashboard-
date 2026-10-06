@@ -79,15 +79,15 @@ export class CollectionsService{
 
   async storefrontList(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
-    const result=await this.db.query<any>("select c.id,c.handle,c.title,c.subtitle,c.description,c.image_url as image,c.position,(select count(*)::int from collection_products cp where cp.collection_id=c.id) as product_count from collections c join stores s on s.id=c.store_id where s.domain=$1 and c.status='active' order by c.position",[domain]);
+    const result=await this.db.query<any>("select c.id,c.handle,c.title,c.subtitle,c.description,c.image_url as image,c.position,c.collection_type,c.publish_at,c.unpublish_at,(select count(*)::int from collection_products cp where cp.collection_id=c.id) as product_count from collections c join stores s on s.id=c.store_id where s.domain=$1 and c.status='active' and (c.publish_at is null or c.publish_at<=now()) and (c.unpublish_at is null or c.unpublish_at>now()) order by c.position",[domain]);
     return result.rows;
   }
 
   async storefrontDetail(handle:string){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
-    const collection=await this.db.query<any>("select c.id,c.handle,c.title,c.subtitle,c.description,c.image_url as image,c.position from collections c join stores s on s.id=c.store_id where s.domain=$1 and c.handle=$2 and c.status='active' limit 1",[domain,handle]);
+    const collection=await this.db.query<any>("select c.id,c.handle,c.title,c.subtitle,c.description,c.image_url as image,c.position,c.collection_type,c.publish_at,c.unpublish_at from collections c join stores s on s.id=c.store_id where s.domain=$1 and c.handle=$2 and c.status='active' and (c.publish_at is null or c.publish_at<=now()) and (c.unpublish_at is null or c.unpublish_at>now()) limit 1",[domain,handle]);
     if(!collection.rowCount) throw new NotFoundException("Collection not found");
-    const products=await this.db.query<any>("select p.handle from collection_products cp join products p on p.id=cp.product_id where cp.collection_id=$1 and p.status='active' order by cp.position",[collection.rows[0].id]);
+    const products=await this.db.query<any>("select p.handle from collection_products cp join products p on p.id=cp.product_id where cp.collection_id=$1 and p.status='active' and (p.published_at is null or p.published_at<=now()) order by cp.position",[collection.rows[0].id]);
     return {...collection.rows[0],productHandles:products.rows.map(p=>p.handle)};
   }
 }
