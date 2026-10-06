@@ -76,6 +76,7 @@ export class StorefrontService{
       inventory:Number(v.inventory),status:v.status,mediaSetId:v.media_set_id,selectedOptions:v.selected_options||{},
     }));
     const seo=await this.seoService.storefront("product",p.id);
+    const mf=await this.db.query<any>("select namespace,key,value,value_type from resource_metafields where store_id=$1 and resource_type='product' and resource_id=$2 order by namespace,key",[p.store_id,p.id]);
 
     return {
       id:p.id,slug:p.handle,name:p.title,price:"Rs. "+Number(p.price_amount).toLocaleString("en-PK"),
@@ -86,6 +87,7 @@ export class StorefrontService{
       variants,
       mediaSets:(detail.mediaSets||[]).map((m:any)=>({id:m.id,name:m.name,matchOptions:m.match_options,isDefault:m.is_default})),
       media,
+      metafields:Object.fromEntries(mf.rows.map((x:any)=>[x.namespace+"."+x.key,x.value])),
       seo:seo?{
         title:seo.title||undefined,
         description:seo.meta_description||undefined,
@@ -100,7 +102,7 @@ export class StorefrontService{
 
   async collection(handle:string){
     const collection=await this.collectionsService.storefrontDetail(handle);
-    const products=await this.productsService.listStorefront();
+    const products=await this.products({});
     const wanted=new Set(collection.productHandles||[]);
     const seo=await this.seoService.storefront("collection",collection.id);
     return {
