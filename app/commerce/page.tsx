@@ -1,0 +1,10 @@
+import Link from "next/link";
+import {PageHeader} from "@/components/page-header";
+import {adminRequest} from "@/lib/admin-api";
+export default async function Commerce(){
+  const [o,r]=await Promise.all([adminRequest<any>("/v1/admin/commerce/overview",0),adminRequest<any>("/v1/admin/commerce/report",0)]);
+  const cards=[["Drafts / Quotes",o?.drafts||0,"/draft-orders"],["Discounts",o?.discounts||0,"/discounts"],["Locations",o?.locations||0,"/inventory"],["Open returns",o?.open_returns||0,"/returns"],["Open POs",o?.open_purchase_orders||0,"/purchasing"],["Notifications",o?.unread_notifications||0,"/audit"]];
+  return <><PageHeader eyebrow="ENTERPRISE COMMERCE" title="Commerce Operations" description="Pricing, inventory, purchasing, returns, taxes, payments and audit controls from the canonical database."><Link className="primary-button" href="/orders/new">+ Manual order</Link></PageHeader>
+  <section className="stats-grid">{cards.map(([a,b,c])=><Link key={String(a)} className="stat-card" href={String(c)}><span>{a}</span><strong>{String(b)}</strong><small>Open module</small></Link>)}</section>
+  <section className="dashboard-grid lower"><article className="panel"><div className="panel-head"><div><span>30 DAY OPERATIONS</span><h2>Financial control</h2></div></div><div className="health-grid"><div className="health-card"><span>REVENUE</span><b>Rs. {Number(r?.revenue||0).toLocaleString("en-PK")}</b></div><div className="health-card"><span>GROSS PROFIT</span><b>Rs. {Number(r?.gross_profit||0).toLocaleString("en-PK")}</b></div><div className="health-card"><span>AOV</span><b>Rs. {Number(r?.aov||0).toLocaleString("en-PK")}</b></div><div className="health-card"><span>INVENTORY VALUE</span><b>Rs. {Number(r?.inventory_value||0).toLocaleString("en-PK")}</b></div></div></article></section></>;
+}
