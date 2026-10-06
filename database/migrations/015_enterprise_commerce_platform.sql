@@ -432,8 +432,14 @@ create table if not exists admin_users (
   email text not null,
   display_name text,
   role_id uuid references roles(id) on delete set null,
+  password_hash text,
+  password_salt text,
+  password_iterations integer not null default 210000,
   status text not null default 'active' check(status in ('invited','active','suspended')),
   last_seen_at timestamptz,
+  last_login_at timestamptz,
+  invited_at timestamptz,
+  created_by text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
