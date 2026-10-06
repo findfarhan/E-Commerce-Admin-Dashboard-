@@ -240,3 +240,22 @@ export async function duplicateProductAction(productId:string){
   revalidatePath("/products");
   redirect("/products/"+result.product.id);
 }
+
+
+export async function saveProductMetafieldsAction(productId:string,formData:FormData){
+  const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
+  const adminKey=process.env.ADMIN_API_KEY;if(!adminKey) throw new Error("ADMIN_API_KEY is not configured");
+  const definitions=JSON.parse(String(formData.get("__definitions")||"[]")) as Array<{id:string;namespace:string;key:string;value_type:string}>;
+  for(const def of definitions){
+    const raw=String(formData.get("metafield__"+def.id)??"").trim();
+    if(!raw) continue;
+    let value:any=raw;
+    if(def.value_type==="number") value=Number(raw);
+    else if(def.value_type==="boolean") value=raw==="true";
+    else if(def.value_type==="json"){try{value=JSON.parse(raw);}catch{throw new Error("Invalid JSON for "+def.key);}}
+    else if(def.value_type==="multi_select") value=raw.split(",").map(x=>x.trim()).filter(Boolean);
+    const response=await fetch(apiBase+"/v1/admin/commerce/metafields/product/"+encodeURIComponent(productId),{method:"POST",headers:{"Content-Type":"application/json","X-Admin-Key":adminKey},body:JSON.stringify({definitionId:def.id,namespace:def.namespace,key:def.key,valueType:def.value_type,value}),cache:"no-store"});
+    if(!response.ok) throw new Error(await response.text());
+  }
+  revalidatePath("/products/"+productId);
+}
