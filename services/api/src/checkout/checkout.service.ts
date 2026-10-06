@@ -128,9 +128,22 @@ export class CheckoutService{
       const lines=await client.query<any>("select * from checkout_lines where checkout_id=$1 order by id",[id]);
       if(!lines.rowCount) throw new BadRequestException("Checkout has no items");
 
+      const groupedLines=new Map<string,any>();
+      for(const line of lines.rows){
+        const quantity=Number(line.quantity);
+        if(!Number.isInteger(quantity)||quantity<1) throw new ConflictException("Checkout contains an invalid quantity");
+        const existing=groupedLines.get(line.variant_id);
+        if(existing){
+          existing.quantity=Number(existing.quantity)+quantity;
+          existing.line_total=Number(existing.line_total)+Number(line.line_total||0);
+        }else{
+          groupedLines.set(line.variant_id,{...line,quantity});
+        }
+      }
+
       let subtotal=0;
       const locked:any[]=[];
-      for(const line of lines.rows){
+      for(const line of groupedLines.values()){
         const variantResult=await client.query<any>("select v.id,v.sku,v.price,v.inventory,v.status,p.id as product_id,p.title,p.status as product_status from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 for update",[line.variant_id,store.id]);
         if(!variantResult.rowCount) throw new ConflictException("A variant no longer exists");
         const variant=variantResult.rows[0];
