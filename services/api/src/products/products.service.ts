@@ -1,5 +1,6 @@
 import {BadRequestException,Injectable,NotFoundException} from "@nestjs/common";
 import {randomUUID} from "node:crypto";
+import sanitizeHtml from "sanitize-html";
 import {DatabaseService} from "../database/database.service";
 import {ImageDeliveryService} from "../media/image-delivery.service";
 
@@ -9,6 +10,17 @@ export class ProductsService{
     private readonly db:DatabaseService,
     private readonly delivery:ImageDeliveryService,
   ){}
+
+  private sanitizeDescription(value:any){
+    if(value===null||value===undefined) return null;
+    const clean=sanitizeHtml(String(value),{
+      allowedTags:["p","br","strong","b","em","i","h2","h3","ul","ol","li","blockquote","a"],
+      allowedAttributes:{a:["href"]},
+      allowedSchemes:["http","https","mailto"],
+      disallowedTagsMode:"discard",
+    }).trim();
+    return clean||null;
+  }
 
   private async storeId(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
@@ -152,7 +164,7 @@ export class ProductsService{
     await this.db.transaction(async client=>{
       await client.query(
         "insert into products(id,store_id,handle,title,description,status,category,material,tag,featured) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-        [productId,storeId,handle,title,body.description??null,status,body.category??null,body.material??null,body.tag??null,Boolean(body.featured)]
+        [productId,storeId,handle,title,this.sanitizeDescription(body.description),status,body.category??null,body.material??null,body.tag??null,Boolean(body.featured)]
       );
       if(hasOpeningVariant){
         const sku=String(body.sku||("JS-"+handle.toUpperCase().replace(/[^A-Z0-9]+/g,"-"))).trim();
@@ -189,7 +201,7 @@ export class ProductsService{
     const params:any[]=[];
     for(const key of allowed){
       if(body[key]!==undefined){
-        params.push(key==="title"?String(body[key]).trim():body[key]);
+        params.push(key==="title"?String(body[key]).trim():key==="description"?this.sanitizeDescription(body[key]):body[key]);
         sets.push(key+"=$"+params.length);
       }
     }

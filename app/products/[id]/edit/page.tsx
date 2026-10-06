@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
+import {RichTextEditor} from "@/components/rich-text-editor";
 import {getAdminProductDetail} from "@/lib/admin-api";
 import {updateProductAction} from "../../actions";
 
@@ -27,7 +28,7 @@ export default async function EditProductPage({params}:{params:Promise<{id:strin
           <label className="field"><span>Material</span><input name="material" defaultValue={(product as any).material||""}/></label>
           <label className="field"><span>Tag</span><input name="tag" defaultValue={(product as any).tag||""}/></label>
           <label className="field"><span>Featured</span><input name="featured" type="checkbox" defaultChecked={Boolean((product as any).featured)}/></label>
-          <label className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><textarea name="description" rows={7} defaultValue={(product as any).description||""}/></label>
+          <div className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><RichTextEditor name="description" value={(product as any).description||""}/></div>
         </div>
       </section>
       <div className="page-actions"><button className="primary-button" type="submit">Save product</button></div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {PageHeader} from "@/components/page-header";
+import {RichTextEditor} from "@/components/rich-text-editor";
 import {createProductAction} from "../actions";
 
 export default function NewProductPage(){
@@ -23,7 +24,7 @@ export default function NewProductPage(){
           <label className="field"><span>Starting price (PKR)</span><input name="price" type="number" min="0" defaultValue="0"/></label>
           <label className="field"><span>Opening stock</span><input name="inventory" type="number" min="0" defaultValue="0"/></label>
           <label className="field"><span>Featured</span><input name="featured" type="checkbox"/></label>
-          <label className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><textarea name="description" rows={6} placeholder="Product story, design intent and useful customer context."/></label>
+          <div className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><RichTextEditor name="description"/></div>
         </div>
       </section>
       <div className="page-actions"><button className="primary-button" type="submit">Create product</button></div>
