@@ -35,12 +35,23 @@ export class EngagementService{
     const email=this.normalizeEmail(body?.email);
     const phone=String(body?.phone||"").trim();
     const notes=String(body?.notes||"").trim();
+    const referenceRaw=String(body?.referenceUrl||"").trim();
+    let referenceUrl:string|null=null;
+    if(referenceRaw){
+      try{
+        const parsed=new URL(referenceRaw);
+        if(!["http:","https:"].includes(parsed.protocol)) throw new Error("protocol");
+        referenceUrl=parsed.toString().slice(0,1000);
+      }catch{
+        throw new BadRequestException("Reference URL must be a valid http(s) link");
+      }
+    }
     if(!name) throw new BadRequestException("Name is required");
     if(!notes||notes.length<10) throw new BadRequestException("Tell us a little more about the commission");
     if(name.length>120||phone.length>40||notes.length>5000) throw new BadRequestException("Commission request is too long");
 
     const result=await this.db.query<any>(
-      "insert into custom_commission_requests(store_id,name,email,phone,signal,preferred_material,budget_range,timeline,notes,status,source) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'new',$10) returning *",
+      "insert into custom_commission_requests(store_id,name,email,phone,signal,preferred_material,budget_range,timeline,notes,reference_url,status,source) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'new',$11) returning *",
       [
         storeId,name,email,phone||null,
         String(body?.signal||"").trim().slice(0,160)||null,
@@ -48,6 +59,7 @@ export class EngagementService{
         String(body?.budgetRange||"").trim().slice(0,120)||null,
         String(body?.timeline||"").trim().slice(0,120)||null,
         notes,
+        referenceUrl,
         String(body?.source||"custom-page").trim().slice(0,80)||"custom-page",
       ]
     );
