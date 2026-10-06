@@ -10,6 +10,7 @@ import {JobsModule} from "./jobs/jobs.module";
 import {OrdersModule} from "./orders/orders.module";
 import {CustomersModule} from "./customers/customers.module";
 import {DashboardModule} from "./dashboard/dashboard.module";
+import {CheckoutModule} from "./checkout/checkout.module";
 
 @Module({
   imports:[
@@ -23,6 +24,7 @@ import {DashboardModule} from "./dashboard/dashboard.module";
     OrdersModule,
     CustomersModule,
     DashboardModule,
+    CheckoutModule,
   ],
   controllers:[HealthController],
 })
