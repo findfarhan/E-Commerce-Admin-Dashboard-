@@ -293,7 +293,9 @@ export class FulfillmentPlatformService{
   }
 
   async refundPayment(body:any){
-    return this.recordPayment({...body,transactionType:"refund",idempotencyKey:body?.idempotencyKey||("refund:"+body?.orderId+":"+Date.now())});
+    const idempotencyKey=String(body?.idempotencyKey||"").trim();
+    if(idempotencyKey.length<8) throw new BadRequestException("Refund idempotencyKey of at least 8 characters is required");
+    return this.recordPayment({...body,transactionType:"refund",idempotencyKey});
   }
 
   async returns(){
