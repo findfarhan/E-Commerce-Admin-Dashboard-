@@ -77,11 +77,6 @@ export class ProcurementPlatformService{
       );
       for(const item of normalized){
         await client.query("insert into purchase_order_items(purchase_order_id,variant_id,quantity,unit_cost,line_total) values($1,$2,$3,$4,$5)",[created.rows[0].id,item.variantId,item.quantity,item.unitCost,item.lineTotal]);
-        await client.query(
-          `insert into inventory_levels(store_id,location_id,variant_id,available,incoming) values($1,$2,$3,0,$4)
-           on conflict(location_id,variant_id) do update set incoming=inventory_levels.incoming+excluded.incoming,updated_at=now()`,
-          [store.id,locationId,item.variantId,item.quantity]
-        );
       }
       await this.governance.audit(store.id,"purchase_order.created","purchase_order",created.rows[0].id,{actor:body?.actor,after:created.rows[0],metadata:{items:normalized}},client);
       return {...created.rows[0],items:normalized};
@@ -90,10 +85,22 @@ export class ProcurementPlatformService{
 
   async orderPurchaseOrder(id:string,body:any={}){
     const storeId=await this.context.storeId();
-    const result=await this.db.query<any>("update purchase_orders set status='ordered',ordered_at=coalesce(ordered_at,now()),updated_at=now() where id=$1 and store_id=$2 and status='draft' returning *",[id,storeId]);
-    if(!result.rowCount) throw new ConflictException("Purchase order is not a draft");
-    await this.governance.audit(storeId,"purchase_order.ordered","purchase_order",id,{actor:body?.actor,after:result.rows[0]});
-    return result.rows[0];
+    return this.db.transaction(async client=>{
+      const current=await client.query<any>("select * from purchase_orders where id=$1 and store_id=$2 for update",[id,storeId]);
+      if(!current.rowCount) throw new NotFoundException("Purchase order not found");
+      if(current.rows[0].status!=="draft") throw new ConflictException("Purchase order is not a draft");
+      const items=await client.query<any>("select * from purchase_order_items where purchase_order_id=$1",[id]);
+      for(const item of items.rows){
+        await client.query(
+          `insert into inventory_levels(store_id,location_id,variant_id,available,incoming) values($1,$2,$3,0,$4)
+           on conflict(location_id,variant_id) do update set incoming=inventory_levels.incoming+excluded.incoming,updated_at=now()`,
+          [storeId,current.rows[0].location_id,item.variant_id,Number(item.quantity)-Number(item.received_quantity||0)]
+        );
+      }
+      const result=await client.query<any>("update purchase_orders set status='ordered',ordered_at=coalesce(ordered_at,now()),updated_at=now() where id=$1 returning *",[id]);
+      await this.governance.audit(storeId,"purchase_order.ordered","purchase_order",id,{actor:body?.actor,after:result.rows[0]},client);
+      return result.rows[0];
+    });
   }
 
   async receivePurchaseOrder(id:string,body:any={}){
@@ -102,7 +109,7 @@ export class ProcurementPlatformService{
     return this.db.transaction(async client=>{
       const po=await client.query<any>("select * from purchase_orders where id=$1 and store_id=$2 for update",[id,storeId]);
       if(!po.rowCount) throw new NotFoundException("Purchase order not found");
-      if(["received","canceled"].includes(po.rows[0].status)) throw new ConflictException("Purchase order cannot receive more stock");
+      if(!["ordered","partially_received"].includes(po.rows[0].status)) throw new ConflictException("Only ordered purchase orders can receive stock");
       const items=await client.query<any>("select * from purchase_order_items where purchase_order_id=$1 for update",[id]);
       let allReceived=true;
       for(const item of items.rows){
