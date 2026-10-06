@@ -17,6 +17,7 @@ import {SeoModule} from "./seo/seo.module";
 import {RedirectsModule} from "./redirects/redirects.module";
 import {EngagementModule} from "./engagement/engagement.module";
 import {OperationsModule} from "./operations/operations.module";
+import {PlatformModule} from "./platform/platform.module";
 
 @Module({
   imports:[
@@ -31,6 +32,7 @@ import {OperationsModule} from "./operations/operations.module";
     RedirectsModule,
     EngagementModule,
     OperationsModule,
+    PlatformModule,
     StorefrontModule,
     JobsModule,
     OrdersModule,
