@@ -11,5 +11,6 @@ export interface ObjectStorage {
   head(key:string):Promise<ObjectMetadata>;
   getBuffer(key:string):Promise<Buffer>;
   put(key:string,body:Buffer,contentType:string):Promise<void>;
+  delete(key:string):Promise<void>;
   publicUrl(key:string):string|null;
 }
