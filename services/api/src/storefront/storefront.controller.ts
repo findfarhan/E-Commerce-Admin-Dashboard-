@@ -6,7 +6,7 @@ import {StorefrontService} from "./storefront.service";
 @UseGuards(PublicRateLimitGuard)
 export class StorefrontController{
   constructor(private readonly storefront:StorefrontService){}
-  @Get("products") products(){return this.storefront.products();}
+  @Get("products") products(@Query() query:any){return this.storefront.products(query);}
   @Get("products/:handle") product(@Param("handle") handle:string){return this.storefront.product(handle);}
   @Get("collections") collections(){return this.storefront.collections();}
   @Get("collections/:handle") collection(@Param("handle") handle:string){return this.storefront.collection(handle);}
