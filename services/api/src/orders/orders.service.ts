@@ -31,7 +31,7 @@ export class OrdersService{
     const storeId=await this.storeId();
     const allowedStatus=["confirmed","processing","completed","canceled"];
     const allowedFulfillment=["unfulfilled","processing","fulfilled","returned"];
-    const allowedPayment=["pending","paid","refunded","failed"];
+    const allowedPayment=["pending","partially_paid","paid","partially_refunded","refunded","failed"];
     const status=body?.status!==undefined?String(body.status):undefined;
     const fulfillment=body?.fulfillmentStatus!==undefined?String(body.fulfillmentStatus):undefined;
     const payment=body?.paymentStatus!==undefined?String(body.paymentStatus):undefined;
@@ -79,14 +79,31 @@ export class OrdersService{
       if(order.rows[0].fulfillment_status==="fulfilled") throw new ConflictException("Fulfilled orders must use a return/refund workflow");
 
       const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
+      let locationId=order.rows[0].location_id as string|null;
+      if(!locationId){
+        const store=await client.query<any>("select default_location_id from stores where id=$1",[storeId]);
+        locationId=store.rows[0]?.default_location_id||null;
+      }
       for(const item of items.rows){
         if(!item.variant_id) continue;
         const variant=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.variant_id]);
         if(!variant.rowCount) continue;
         const before=Number(variant.rows[0].inventory);
-        const after=before+Number(item.quantity);
-        await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
-        await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_cancel',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order canceled")]);
+        if(locationId){
+          await client.query(
+            `insert into inventory_levels(store_id,location_id,variant_id,available) values($1,$2,$3,$4)
+             on conflict(location_id,variant_id) do update set available=inventory_levels.available+excluded.available,updated_at=now()`,
+            [storeId,locationId,item.variant_id,Number(item.quantity)]
+          );
+          const total=await client.query<any>("select coalesce(sum(available),0)::int as total from inventory_levels where variant_id=$1",[item.variant_id]);
+          const after=Number(total.rows[0]?.total||0);
+          await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
+          await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_cancel',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order canceled")]);
+        }else{
+          const after=before+Number(item.quantity);
+          await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
+          await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_cancel',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order canceled")]);
+        }
       }
 
       const updated=await client.query<any>("update orders set status='canceled',fulfillment_status='unfulfilled',notes=coalesce($1,notes) where id=$2 returning *",[body?.reason??null,id]);
@@ -106,14 +123,31 @@ export class OrdersService{
       if(current.fulfillment_status!=="fulfilled") throw new ConflictException("Only fulfilled orders can be returned");
 
       const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
+      let locationId=current.location_id as string|null;
+      if(!locationId){
+        const store=await client.query<any>("select default_location_id from stores where id=$1",[storeId]);
+        locationId=store.rows[0]?.default_location_id||null;
+      }
       for(const item of items.rows){
         if(!item.variant_id) continue;
         const variant=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.variant_id]);
         if(!variant.rowCount) continue;
         const before=Number(variant.rows[0].inventory);
-        const after=before+Number(item.quantity);
-        await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
-        await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
+        if(locationId){
+          await client.query(
+            `insert into inventory_levels(store_id,location_id,variant_id,available) values($1,$2,$3,$4)
+             on conflict(location_id,variant_id) do update set available=inventory_levels.available+excluded.available,updated_at=now()`,
+            [storeId,locationId,item.variant_id,Number(item.quantity)]
+          );
+          const total=await client.query<any>("select coalesce(sum(available),0)::int as total from inventory_levels where variant_id=$1",[item.variant_id]);
+          const after=Number(total.rows[0]?.total||0);
+          await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
+          await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
+        }else{
+          const after=before+Number(item.quantity);
+          await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
+          await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
+        }
       }
 
       const paymentStatus=current.payment_status==="paid"?"refunded":current.payment_status;
