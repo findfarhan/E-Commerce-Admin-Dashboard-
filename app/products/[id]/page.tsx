@@ -2,9 +2,10 @@ import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
 import {ProductVariantManager} from "@/components/product-variant-manager";
+import {MediaUploader} from "@/components/media-uploader";
 import {adminRequest,getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
 import {
-  adjustInventoryAction,archiveVariantAction,createMediaSetAction,createOptionAction,createVariantAction,
+  adjustInventoryAction,archiveVariantAction,createMediaSetAction,createOptionAction,createVariantAction,createSourceMediaAction,deleteMediaAction,updateMediaAction,
   archiveProductAction,deleteOptionAction,duplicateProductAction,generateVariantsAction,saveProductSeoAction,saveProductMetafieldsAction,updateOptionAction,updateVariantAction
 } from "../actions";
 
@@ -13,7 +14,7 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const detail=await getAdminProductDetail(id);
   if(!detail) notFound();
 
-  const {product,options,variants,mediaSets}=detail;
+  const {product,options,variants,mediaSets,media}=detail;
   const [seo,metafieldDefs,metafieldValues]=await Promise.all([getAdminSeo("product",id),adminRequest<any>("/v1/admin/commerce/metafield-definitions?resourceType=product",0),adminRequest<any>("/v1/admin/commerce/metafields/product/"+encodeURIComponent(id),0)]);
   const addOption=createOptionAction.bind(null,id);
   const addVariant=createVariantAction.bind(null,id);
@@ -23,6 +24,7 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const archiveProduct=archiveProductAction.bind(null,id);
   const duplicateProduct=duplicateProductAction.bind(null,id);
   const visualOptions=options.filter(option=>option.isVisual);
+  const addSourceMedia=createSourceMediaAction.bind(null,id);
   const saveMetafields=saveProductMetafieldsAction.bind(null,id);
   const metafieldMap=new Map<string,any>((metafieldValues?.items||[]).map((x:any)=>[x.definition_id,x]));
 
@@ -167,6 +169,47 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
         </form>
       </section>
     </article>}
+
+    <article className="panel settings-panel" style={{marginTop:14}}>
+      <section className="settings-section">
+        <h2>Media library</h2>
+        <p>Upload one master image to R2 and let the media pipeline create responsive renditions. Source URL remains available as a credential-free fallback.</p>
+        <MediaUploader productId={id} mediaSets={mediaSets.map(x=>({id:x.id,name:x.name}))}/>
+        <details style={{marginTop:18}}>
+          <summary>Add HTTPS source image instead</summary>
+          <form action={addSourceMedia} className="field-grid" style={{marginTop:12}}>
+            <label className="field"><span>Image URL</span><input name="sourceUrl" type="url" required placeholder="https://..."/></label>
+            <label className="field"><span>Alt text</span><input name="altText"/></label>
+            <label className="field"><span>Role</span><select name="role"><option value="gallery">Gallery</option><option value="primary">Primary</option></select></label>
+            <label className="field"><span>Position</span><input name="position" type="number" min="0" defaultValue="0"/></label>
+            <label className="field"><span>Media set</span><select name="mediaSetId"><option value="">General</option>{mediaSets.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            <div className="page-actions"><button className="secondary-button">Add source image</button></div>
+          </form>
+        </details>
+        <div className="seo-check-list" style={{marginTop:20}}>
+          {(media||[]).map((m:any)=>{
+            const update=updateMediaAction.bind(null,id,m.id);const remove=deleteMediaAction.bind(null,id,m.id);
+            return <div key={m.id} style={{display:"grid",gridTemplateColumns:"120px 1fr",gap:16,padding:"16px 0",alignItems:"start"}}>
+              <div>{(m.responsive?.admin_thumb||m.url||m.sourceUrl)?<img src={m.responsive?.admin_thumb||m.url||m.sourceUrl} alt={m.altText||""} style={{width:110,height:110,objectFit:"cover",borderRadius:8}}/>:<div className="product-summary-thumb"/>}</div>
+              <div>
+                <form action={update} className="field-grid">
+                  <label className="field"><span>Alt text</span><input name="altText" defaultValue={m.altText||""}/></label>
+                  <label className="field"><span>Role</span><select name="role" defaultValue={m.role||"gallery"}><option value="primary">Primary</option><option value="gallery">Gallery</option></select></label>
+                  <label className="field"><span>Position</span><input name="position" type="number" min="0" defaultValue={m.position||0}/></label>
+                  <label className="field"><span>Media set</span><select name="mediaSetId" defaultValue={m.mediaSetId||""}><option value="">General</option>{mediaSets.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+                  <label className="field"><span>Focal X</span><input name="focalX" type="number" min="0" max="1" step="0.01" defaultValue={m.focalX??0.5}/></label>
+                  <label className="field"><span>Focal Y</span><input name="focalY" type="number" min="0" max="1" step="0.01" defaultValue={m.focalY??0.5}/></label>
+                  {m.sourceUrl&&<label className="field" style={{gridColumn:"1/-1"}}><span>Source URL</span><input name="sourceUrl" type="url" defaultValue={m.sourceUrl}/></label>}
+                  <div className="page-actions"><button className="secondary-button">Save media</button></div>
+                </form>
+                <form action={remove}><button className="secondary-button" type="submit">Delete media</button></form>
+              </div>
+            </div>;
+          })}
+          {!(media||[]).length&&<p>No product media yet.</p>}
+        </div>
+      </section>
+    </article>
 
     <article className="panel settings-panel" style={{marginTop:14}}>
       <section className="settings-section">
