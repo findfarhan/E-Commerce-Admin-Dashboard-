@@ -102,11 +102,25 @@ export class CommerceService{
   async taxes(){const s=await this.store();const r=await this.db.query<any>("select * from tax_rules where store_id=$1 order by priority,created_at",[s.id]);return {items:r.rows};}
   async createTaxRule(body:any){const s=await this.store();const name=String(body?.name||"").trim(),rate=this.num(body?.rate);if(!name||rate<0||rate>1)throw new BadRequestException("rate must be between 0 and 1");const r=await this.db.query<any>("insert into tax_rules(store_id,name,country,region,rate,inclusive,priority,active) values($1,$2,$3,$4,$5,$6,$7,$8) returning *",[s.id,name,body?.country??null,body?.region??null,rate,Boolean(body?.inclusive),Number(body?.priority||0),body?.active!==false]);return r.rows[0];}
 
-  private async resolveDiscount(client:any,storeId:string,code:any,subtotal:number){
+  private async resolveDiscount(client:any,storeId:string,code:any,subtotal:number,lines:any[]=[]){
     if(!code) return {amount:0,row:null};
     const r=await client.query("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1",[storeId,String(code).toUpperCase()]);
-    const d=r.rows[0];if(!d) throw new BadRequestException("Discount code is invalid or expired");if(d.minimum_order!==null&&subtotal<Number(d.minimum_order))throw new BadRequestException("Minimum order not met");if(d.usage_limit!==null&&Number(d.usage_count)>=Number(d.usage_limit))throw new BadRequestException("Discount usage limit reached");
-    let amount=d.kind==="percentage"?subtotal*Math.min(100,Number(d.value))/100:d.kind==="fixed"?Number(d.value):0;amount=Math.min(subtotal,Math.max(0,amount));return {amount,row:d};
+    const d=(r as any).rows[0];if(!d) throw new BadRequestException("Discount code is invalid or expired");
+    if(d.minimum_order!==null&&subtotal<Number(d.minimum_order))throw new BadRequestException("Minimum order not met");
+    if(d.usage_limit!==null&&Number(d.usage_count)>=Number(d.usage_limit))throw new BadRequestException("Discount usage limit reached");
+    let eligibleSubtotal=subtotal;
+    if(d.applies_to==="product"&&Array.isArray(d.product_ids)&&d.product_ids.length){
+      const allowed=new Set(d.product_ids.map(String));eligibleSubtotal=lines.filter(x=>allowed.has(String(x.row?.product_id))).reduce((sum,x)=>sum+Number(x.lineTotal||0),0);
+    }else if(d.applies_to==="collection"&&Array.isArray(d.collection_ids)&&d.collection_ids.length){
+      const productIds=[...new Set(lines.map(x=>String(x.row?.product_id)).filter(Boolean))];
+      if(productIds.length){
+        const matched=await client.query("select distinct product_id from collection_products where collection_id=any($1::uuid[]) and product_id=any($2::uuid[])",[d.collection_ids,productIds]);
+        const allowed=new Set((matched as any).rows.map((x:any)=>String(x.product_id)));
+        eligibleSubtotal=lines.filter(x=>allowed.has(String(x.row?.product_id))).reduce((sum,x)=>sum+Number(x.lineTotal||0),0);
+      }else eligibleSubtotal=0;
+    }
+    let amount=d.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(d.value))/100:d.kind==="fixed"?Number(d.value):0;
+    amount=Math.min(eligibleSubtotal,Math.max(0,amount));return {amount,row:d};
   }
   private async orderFromBody(body:any,source="admin_manual"){
     const s=await this.store();const items=Array.isArray(body?.items)?body.items:[];if(!items.length)throw new BadRequestException("At least one item is required");
@@ -115,7 +129,7 @@ export class CommerceService{
       if(!customerId&&body?.customer?.email){const x=body.customer;const cr=await c.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=coalesce(excluded.name,customers.name),phone=coalesce(excluded.phone,customers.phone) returning id",[s.id,String(x.email).toLowerCase(),x.name??null,x.phone??null]);customerId=cr.rows[0].id;}
       const locationId=body?.locationId||null;let subtotal=0,cost=0;const locked:any[]=[];
       for(const line of items){const qty=Number(line.quantity||1);if(!Number.isInteger(qty)||qty<1)throw new BadRequestException("Invalid quantity");const v=await c.query<any>("select v.*,p.title,p.store_id,p.taxable from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 for update",[line.variantId,s.id]);if(!v.rowCount)throw new NotFoundException("Variant not found");const row=v.rows[0];if(Number(row.inventory)<qty)throw new ConflictException(row.sku+" has insufficient stock");const unit=line.unitPrice!==undefined?this.num(line.unitPrice):Number(row.price);if(unit<0)throw new BadRequestException("Invalid unit price");subtotal+=unit*qty;cost+=Number(row.cost_price||0)*qty;locked.push({row,qty,unit,lineTotal:unit*qty});}
-      const disc=await this.resolveDiscount(c,s.id,body?.discountCode,subtotal);const shipping=Math.max(0,this.num(body?.shippingAmount));const tax=Math.max(0,this.num(body?.taxAmount));const total=Math.max(0,subtotal-disc.amount+shipping+tax);
+      const disc=await this.resolveDiscount(c,s.id,body?.discountCode,subtotal,locked);const shipping=Math.max(0,this.num(body?.shippingAmount));const tax=Math.max(0,this.num(body?.taxAmount));const total=Math.max(0,subtotal-disc.amount+shipping+tax);
       const n=await c.query<any>("select 'JS-'||lpad(nextval('jewelry_order_number_seq')::text,6,'0') value");const number=n.rows[0].value;
       const status=String(body?.status||"confirmed"),pay=String(body?.paymentStatus||"pending");const ship=this.address(body?.shippingAddress),bill=this.address(body?.billingAddress||body?.shippingAddress);
       const o=await c.query<any>("insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,total,source_channel,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,discount_code,fulfillment_location_id,notes,gross_profit) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,'unfulfilled',$17,$18,$19,$20) returning *",[s.id,customerId,number,status,pay,String(body?.currency||s.currency||"PKR"),subtotal,disc.amount,shipping,tax,total,source,JSON.stringify(ship),JSON.stringify(bill),String(body?.shippingMethod||"manual"),String(body?.paymentMethod||"cod"),disc.row?.code||null,locationId,body?.notes??null,total-cost]);
