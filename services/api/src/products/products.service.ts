@@ -35,10 +35,24 @@ export class ProductsService{
     return result.rows[0].id;
   }
 
-  async listAdmin(){
+  async listAdmin(filters:any={}){
     const storeId=await this.storeId();
-    const sql="select p.*, (select v.sku from product_variants v where v.product_id=p.id order by v.created_at limit 1) as primary_sku, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory, (select count(*)::int from product_variants v where v.product_id=p.id) as variant_count, (select count(*)::int from product_media_sets ms where ms.product_id=p.id) as media_set_count from products p where p.store_id=$1 order by p.created_at asc";
-    const result=await this.db.query<any>(sql,[storeId]);
+    const where:string[]=["p.store_id=$1"];const params:any[]=[storeId];let i=2;
+    const add=(sql:string,value:any)=>{params.push(value);where.push(sql.replace("?", "$"+i++));};
+    if(filters.status)add("p.status=?",String(filters.status));
+    if(filters.category)add("lower(coalesce(p.category,''))=lower(?)",String(filters.category));
+    if(filters.vendor)add("lower(coalesce(p.vendor,'')) like lower('%'||?||'%')",String(filters.vendor));
+    if(filters.productType)add("lower(coalesce(p.product_type,'')) like lower('%'||?||'%')",String(filters.productType));
+    if(filters.q){
+      const n="$"+i++;params.push("%"+String(filters.q).trim()+"%");
+      where.push("(p.title ilike "+n+" or p.handle ilike "+n+" or coalesce(p.category,'') ilike "+n+" or coalesce(p.material,'') ilike "+n+" or coalesce(p.vendor,'') ilike "+n+" or exists(select 1 from product_variants vx where vx.product_id=p.id and vx.sku ilike "+n+") or exists(select 1 from product_tags pt where pt.product_id=p.id and pt.tag ilike "+n+"))");
+    }
+    if(filters.stock==="low") where.push("exists(select 1 from product_variants vx where vx.product_id=p.id and vx.status='active' and vx.inventory<=3)");
+    if(filters.stock==="out") where.push("not exists(select 1 from product_variants vx where vx.product_id=p.id and vx.status='active' and vx.inventory>0)");
+    if(filters.metafield){
+      const raw=String(filters.metafield);const colon=raw.indexOf(":");if(colon>0){const full=raw.slice(0,colon),value=raw.slice(colon+1);const dot=full.indexOf(".");if(dot>0){const ns=full.slice(0,dot),key=full.slice(dot+1);const p1="$"+i++,p2="$"+i++,p3="$"+i++;params.push(ns,key,"%"+value+"%");where.push("exists(select 1 from resource_metafields rm where rm.store_id=p.store_id and rm.resource_type='product' and rm.resource_id=p.id and rm.namespace="+p1+" and rm.key="+p2+" and (rm.value #>> '{}') ilike "+p3+")");}}}
+    const sql="select p.*, (select v.sku from product_variants v where v.product_id=p.id order by v.created_at limit 1) as primary_sku, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory, (select count(*)::int from product_variants v where v.product_id=p.id) as variant_count, (select count(*)::int from product_media_sets ms where ms.product_id=p.id) as media_set_count from products p where "+where.join(" and ")+" order by p.created_at desc limit 1000";
+    const result=await this.db.query<any>(sql,params);
     return {items:result.rows};
   }
 
