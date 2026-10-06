@@ -30,6 +30,7 @@ export class PlatformController{
   @Post("collections/:id/refresh") refreshCollection(@Param("id") id:string){return this.catalog.refreshSmartCollection(id);}
   @Patch("collections/:id/schedule") scheduleCollection(@Param("id") id:string,@Body() body:any){return this.catalog.scheduleCollection(id,body);}
 
+  @Get("order-catalog") orderCatalog(){return this.orders.orderCatalog();}
   @Get("draft-orders") draftOrders(){return this.orders.draftOrders();}
   @Post("draft-orders") createDraft(@Body() body:any){return this.orders.createDraft(body);}
   @Get("draft-orders/:id") draftOrder(@Param("id") id:string){return this.orders.draftOrder(id);}
