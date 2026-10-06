@@ -3,7 +3,7 @@ import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
 import {StatusPill} from "@/components/status-pill";
 import {getAdminOrderDetail} from "@/lib/admin-api";
-import {cancelOrderAction,updateOrderAction} from "../actions";
+import {cancelOrderAction,returnOrderAction,updateOrderAction} from "../actions";
 
 const money=(value:any)=>"Rs. "+Number(value||0).toLocaleString("en-PK");
 
@@ -14,6 +14,7 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
   const order=detail.order;
   const update=updateOrderAction.bind(null,id);
   const cancel=cancelOrderAction.bind(null,id);
+  const returnOrder=returnOrderAction.bind(null,id);
 
   return <>
     <PageHeader eyebrow="ORDER" title={order.order_number} description="Payment, fulfillment, customer, item and operational history in one record.">
@@ -67,6 +68,7 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
         <div className="panel-head"><div><span>TIMELINE</span><h2>Order events</h2></div></div>
         <div className="activity-list">{(detail.events||[]).map((event:any)=><div className="activity-item" key={event.id}><span>•</span><div><b>{event.event_type}</b><p>{event.message}</p></div><time>{new Date(event.created_at).toLocaleString("en-PK")}</time></div>)}</div>
         {order.status!=="canceled"&&order.fulfillment_status!=="fulfilled"&&<form action={cancel} style={{marginTop:20}}><label className="field"><span>Cancellation reason</span><input name="reason" placeholder="Customer request, duplicate order..."/></label><button className="secondary-button" type="submit">Cancel & restore inventory</button></form>}
+        {order.fulfillment_status==="fulfilled"&&<form action={returnOrder} style={{marginTop:20}}><label className="field"><span>Return reason</span><input name="reason" placeholder="Returned by customer, damaged in transit..."/></label><button className="secondary-button" type="submit">Mark returned & restock</button></form>}
       </article>
     </section>
   </>;

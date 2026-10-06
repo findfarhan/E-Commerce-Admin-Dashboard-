@@ -76,4 +76,33 @@ export class OrdersService{
       return {ok:true,idempotent:false,order:updated.rows[0]};
     });
   }
+
+  async returnOrder(id:string,body:any){
+    const storeId=await this.storeId();
+    return this.db.transaction(async client=>{
+      const order=await client.query<any>("select * from orders where id=$1 and store_id=$2 for update",[id,storeId]);
+      if(!order.rowCount) throw new NotFoundException("Order not found");
+      const current=order.rows[0];
+      if(current.fulfillment_status==="returned") return {ok:true,idempotent:true,order:current};
+      if(current.status==="canceled") throw new ConflictException("Canceled orders cannot be returned");
+      if(current.fulfillment_status!=="fulfilled") throw new ConflictException("Only fulfilled orders can be returned");
+
+      const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
+      for(const item of items.rows){
+        if(!item.variant_id) continue;
+        const variant=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.variant_id]);
+        if(!variant.rowCount) continue;
+        const before=Number(variant.rows[0].inventory);
+        const after=before+Number(item.quantity);
+        await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
+        await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
+      }
+
+      const paymentStatus=current.payment_status==="paid"?"refunded":current.payment_status;
+      const updated=await client.query<any>("update orders set fulfillment_status='returned',payment_status=$1,notes=coalesce($2,notes) where id=$3 returning *",[paymentStatus,body?.reason??null,id]);
+      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.returned',$2,$3::jsonb)",[id,"Order returned and inventory restored",JSON.stringify({reason:body?.reason||null,paymentStatus})]);
+      return {ok:true,idempotent:false,order:updated.rows[0]};
+    });
+  }
+
 }

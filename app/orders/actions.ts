@@ -24,3 +24,13 @@ export async function cancelOrderAction(id:string,formData:FormData){
   revalidatePath("/orders");
   revalidatePath("/orders/"+id);
 }
+
+
+export async function returnOrderAction(id:string,formData:FormData){
+  await adminMutation("/v1/admin/orders/"+id+"/return",{
+    method:"POST",
+    body:JSON.stringify({reason:String(formData.get("reason")||"").trim()||"Returned by admin"}),
+  });
+  revalidatePath("/orders");
+  revalidatePath("/orders/"+id);
+}

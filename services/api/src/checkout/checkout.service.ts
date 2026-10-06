@@ -65,7 +65,17 @@ export class CheckoutService{
     const checkout=await this.db.query<any>("select * from checkout_sessions where id=$1 and store_id=$2 limit 1",[id,store.id]);
     if(!checkout.rowCount) throw new NotFoundException("Checkout not found");
     const lines=await this.db.query<any>("select id,product_id,variant_id,sku_snapshot,title_snapshot,selected_options,quantity,unit_price,line_total from checkout_lines where checkout_id=$1 order by id",[id]);
-    return {...checkout.rows[0],subtotal:Number(checkout.rows[0].subtotal),shipping_amount:Number(checkout.rows[0].shipping_amount||0),items:lines.rows.map(line=>({...line,unit_price:Number(line.unit_price),line_total:Number(line.line_total)}))};
+    const row=checkout.rows[0];
+    return {
+      id:row.id,
+      status:row.status,
+      currency:row.currency,
+      subtotal:Number(row.subtotal),
+      shipping_amount:Number(row.shipping_amount||0),
+      payment_method:row.payment_method,
+      expires_at:row.expires_at,
+      items:lines.rows.map(line=>({...line,unit_price:Number(line.unit_price),line_total:Number(line.line_total)})),
+    };
   }
 
   async setCustomer(id:string,body:any){
@@ -131,8 +141,15 @@ export class CheckoutService{
       }
 
       const email=String(checkout.customer_email).toLowerCase();
-      const customerResult=await client.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and email <> '' do update set name=excluded.name,phone=excluded.phone returning id,name,email,phone",[store.id,email,checkout.customer_name,checkout.customer_phone]);
-      const customer=customerResult.rows[0];
+      const existingCustomer=await client.query<any>("select id,name,email,phone from customers where store_id=$1 and lower(email)=$2 limit 1 for update",[store.id,email]);
+      let customer:any;
+      if(existingCustomer.rowCount){
+        const updatedCustomer=await client.query<any>("update customers set name=$1,phone=$2 where id=$3 returning id,name,email,phone",[checkout.customer_name,checkout.customer_phone,existingCustomer.rows[0].id]);
+        customer=updatedCustomer.rows[0];
+      }else{
+        const insertedCustomer=await client.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) returning id,name,email,phone",[store.id,email,checkout.customer_name,checkout.customer_phone]);
+        customer=insertedCustomer.rows[0];
+      }
 
       const numberResult=await client.query<{value:string}>("select 'JS-'||lpad(nextval('jewelry_order_number_seq')::text,6,'0') as value");
       const orderNumber=numberResult.rows[0].value;

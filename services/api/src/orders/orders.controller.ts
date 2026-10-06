@@ -10,4 +10,5 @@ export class OrdersController{
   @Get(":id") detail(@Param("id") id:string){return this.orders.detail(id);}
   @Patch(":id") update(@Param("id") id:string,@Body() body:any){return this.orders.update(id,body);}
   @Post(":id/cancel") cancel(@Param("id") id:string,@Body() body:any){return this.orders.cancel(id,body);}
+  @Post(":id/return") returnOrder(@Param("id") id:string,@Body() body:any){return this.orders.returnOrder(id,body);}
 }
