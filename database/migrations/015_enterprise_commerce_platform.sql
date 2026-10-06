@@ -25,6 +25,7 @@ alter table product_variants
 alter table orders
   add column if not exists discount_amount numeric(14,2) not null default 0,
   add column if not exists tax_amount numeric(14,2) not null default 0,
+  add column if not exists discount_code text,
   add column if not exists location_id uuid,
   add column if not exists draft_order_id uuid;
 
@@ -35,6 +36,12 @@ alter table order_items
 
 alter table customers
   add column if not exists updated_at timestamptz not null default now();
+
+alter table checkout_sessions
+  add column if not exists discount_code text,
+  add column if not exists discount_amount numeric(14,2) not null default 0,
+  add column if not exists tax_amount numeric(14,2) not null default 0,
+  add column if not exists shipping_rate_id uuid;
 
 alter table collections
   add column if not exists collection_type text not null default 'manual',
@@ -269,6 +276,12 @@ create table if not exists shipping_rates (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table checkout_sessions
+  drop constraint if exists checkout_sessions_shipping_rate_fk;
+alter table checkout_sessions
+  add constraint checkout_sessions_shipping_rate_fk
+  foreign key(shipping_rate_id) references shipping_rates(id) on delete set null;
 
 create table if not exists tax_rules (
   id uuid primary key default gen_random_uuid(),
