@@ -274,6 +274,82 @@ export class ProductsService{
     return result.rows[0];
   }
 
+  async duplicateProduct(id:string){
+    const storeId=await this.storeId();
+    const newProductId=randomUUID();
+
+    await this.db.transaction(async client=>{
+      const sourceResult=await client.query<any>("select * from products where id=$1 and store_id=$2 limit 1",[id,storeId]);
+      if(!sourceResult.rowCount) throw new NotFoundException("Product not found");
+      const source=sourceResult.rows[0];
+
+      const baseHandle=(String(source.handle||"product")+"-copy").replace(/-+/g,"-");
+      let handle=baseHandle;
+      let suffix=2;
+      while((await client.query("select 1 from products where store_id=$1 and handle=$2 limit 1",[storeId,handle])).rowCount){
+        handle=baseHandle+"-"+suffix++;
+        if(suffix>1000) throw new BadRequestException("Could not generate a unique duplicate handle");
+      }
+
+      await client.query(
+        "insert into products(id,store_id,handle,title,description,status,category,material,tag,featured) values($1,$2,$3,$4,$5,'draft',$6,$7,$8,false)",
+        [newProductId,storeId,handle,String(source.title)+" Copy",source.description,source.category,source.material,source.tag]
+      );
+
+      const valueMap=new Map<string,string>();
+      const options=await client.query<any>("select * from product_options where product_id=$1 order by position",[id]);
+      for(const option of options.rows){
+        const optionInsert=await client.query<any>(
+          "insert into product_options(product_id,name,position,is_visual) values($1,$2,$3,$4) returning id",
+          [newProductId,option.name,option.position,option.is_visual]
+        );
+        const values=await client.query<any>("select * from product_option_values where option_id=$1 order by position",[option.id]);
+        for(const value of values.rows){
+          const inserted=await client.query<any>(
+            "insert into product_option_values(option_id,value,position,swatch_color) values($1,$2,$3,$4) returning id",
+            [optionInsert.rows[0].id,value.value,value.position,value.swatch_color]
+          );
+          valueMap.set(value.id,inserted.rows[0].id);
+        }
+      }
+
+      const mediaSetMap=new Map<string,string>();
+      const mediaSets=await client.query<any>("select * from product_media_sets where product_id=$1 order by created_at",[id]);
+      for(const set of mediaSets.rows){
+        const inserted=await client.query<any>(
+          "insert into product_media_sets(product_id,name,match_options,is_default) values($1,$2,$3::jsonb,$4) returning id",
+          [newProductId,set.name,JSON.stringify(set.match_options||{}),set.is_default]
+        );
+        mediaSetMap.set(set.id,inserted.rows[0].id);
+      }
+
+      const variants=await client.query<any>("select * from product_variants where product_id=$1 order by created_at",[id]);
+      const skuToken=newProductId.slice(0,6).toUpperCase();
+      for(const variant of variants.rows){
+        const newVariantId=randomUUID();
+        await client.query(
+          "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id) values($1,$2,$3,$4,$5,0,'draft',$6)",
+          [newVariantId,newProductId,String(variant.sku)+"-COPY-"+skuToken,variant.price,variant.compare_at_price,variant.media_set_id?mediaSetMap.get(variant.media_set_id)||null:null]
+        );
+        const selected=await client.query<any>("select option_value_id from variant_option_values where variant_id=$1",[variant.id]);
+        for(const selectedValue of selected.rows){
+          const newValueId=valueMap.get(selectedValue.option_value_id);
+          if(newValueId) await client.query("insert into variant_option_values(variant_id,option_value_id) values($1,$2)",[newVariantId,newValueId]);
+        }
+      }
+
+      const media=await client.query<any>("select * from product_media where product_id=$1 order by position,created_at",[id]);
+      for(const item of media.rows){
+        await client.query(
+          "insert into product_media(product_id,media_set_id,storage_provider,storage_key,source_url,role,position,alt_text,width,height,focal_x,focal_y,processing_status) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+          [newProductId,item.media_set_id?mediaSetMap.get(item.media_set_id)||null:null,item.storage_provider,item.storage_key,item.source_url,item.role,item.position,item.alt_text,item.width,item.height,item.focal_x,item.focal_y,item.processing_status]
+        );
+      }
+    });
+
+    return this.getAdminDetail(newProductId);
+  }
+
   async archiveProduct(id:string){
     const storeId=await this.storeId();
     const result=await this.db.query<any>("update products set status='archived',updated_at=now() where id=$1 and store_id=$2 returning id,status",[id,storeId]);
