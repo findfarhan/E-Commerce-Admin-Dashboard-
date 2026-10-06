@@ -7,6 +7,9 @@ import {ProductsModule} from "./products/products.module";
 import {StorefrontModule} from "./storefront/storefront.module";
 import {MediaModule} from "./media/media.module";
 import {JobsModule} from "./jobs/jobs.module";
+import {OrdersModule} from "./orders/orders.module";
+import {CustomersModule} from "./customers/customers.module";
+import {DashboardModule} from "./dashboard/dashboard.module";
 
 @Module({
   imports:[
@@ -17,6 +20,9 @@ import {JobsModule} from "./jobs/jobs.module";
     ProductsModule,
     StorefrontModule,
     JobsModule,
+    OrdersModule,
+    CustomersModule,
+    DashboardModule,
   ],
   controllers:[HealthController],
 })
