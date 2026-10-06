@@ -20,7 +20,7 @@ async function sessionPayload(token:string,secret:string){
 }
 function requiredPermission(path:string){
   if(path.startsWith("/team")||path.startsWith("/settings")||path.startsWith("/audit")) return "admin";
-  if(path.startsWith("/products")||path.startsWith("/collections")||path.startsWith("/metafields")) return "catalog";
+  if(path.startsWith("/products")||path.startsWith("/collections")||path.startsWith("/metafields")||path.startsWith("/api/media")) return "catalog";
   if(path.startsWith("/orders")||path.startsWith("/draft-orders")||path.startsWith("/returns")) return "orders";
   if(path.startsWith("/inventory")||path.startsWith("/purchasing")) return "inventory";
   if(path.startsWith("/customers")||path.startsWith("/inbox")||path.startsWith("/commissions")) return "crm";
