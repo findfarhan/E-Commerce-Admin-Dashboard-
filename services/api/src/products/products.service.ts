@@ -341,8 +341,8 @@ export class ProductsService{
       const media=await client.query<any>("select * from product_media where product_id=$1 order by position,created_at",[id]);
       for(const item of media.rows){
         await client.query(
-          "insert into product_media(product_id,media_set_id,storage_provider,storage_key,source_url,role,position,alt_text,width,height,focal_x,focal_y,processing_status) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
-          [newProductId,item.media_set_id?mediaSetMap.get(item.media_set_id)||null:null,item.storage_provider,item.storage_key,item.source_url,item.role,item.position,item.alt_text,item.width,item.height,item.focal_x,item.focal_y,item.processing_status]
+          "insert into product_media(product_id,media_set_id,master_object_key,mime_type,width,height,focal_x,focal_y,alt_text,position,source_url,role,storage_provider,storage_bucket,external_asset_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+          [newProductId,item.media_set_id?mediaSetMap.get(item.media_set_id)||null:null,item.master_object_key,item.mime_type,item.width,item.height,item.focal_x,item.focal_y,item.alt_text,item.position,item.source_url,item.role,item.storage_provider,item.storage_bucket,item.external_asset_id]
         );
       }
     });
