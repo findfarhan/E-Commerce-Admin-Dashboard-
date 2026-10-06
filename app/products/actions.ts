@@ -40,6 +40,14 @@ export async function createProductAction(formData:FormData){
       tag:String(formData.get("tag")||"").trim()||null,
       status:String(formData.get("status")||"draft"),
       featured:formData.get("featured")==="on",
+      productType:String(formData.get("productType")||"").trim()||null,
+      vendor:String(formData.get("vendor")||"").trim()||null,
+      tags:String(formData.get("tags")||"").split(",").map(x=>x.trim()).filter(Boolean),
+      publishedAt:String(formData.get("publishedAt")||"").trim()||null,
+      taxable:formData.get("taxable")==="on",
+      weightGrams:String(formData.get("weightGrams")||"").trim()?Number(formData.get("weightGrams")):null,
+      costPrice:String(formData.get("costPrice")||"").trim()?Number(formData.get("costPrice")):null,
+      variantWeightGrams:String(formData.get("variantWeightGrams")||"").trim()?Number(formData.get("variantWeightGrams")):null,
       price:Number(formData.get("price")||0),
       inventory:Number(formData.get("inventory")||0),
       sku:String(formData.get("sku")||"").trim()||undefined,
@@ -62,6 +70,12 @@ export async function updateProductAction(id:string,formData:FormData){
       tag:String(formData.get("tag")||"").trim()||null,
       status:String(formData.get("status")||"draft"),
       featured:formData.get("featured")==="on",
+      productType:String(formData.get("productType")||"").trim()||null,
+      vendor:String(formData.get("vendor")||"").trim()||null,
+      tags:String(formData.get("tags")||"").split(",").map(x=>x.trim()).filter(Boolean),
+      publishedAt:String(formData.get("publishedAt")||"").trim()||null,
+      taxable:formData.get("taxable")==="on",
+      weightGrams:String(formData.get("weightGrams")||"").trim()?Number(formData.get("weightGrams")):null,
     }),
   });
 
@@ -104,6 +118,8 @@ export async function createVariantAction(id:string,formData:FormData){
       inventory:Number(formData.get("inventory")||0),
       status:String(formData.get("status")||"active"),
       mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+      costPrice:String(formData.get("costPrice")||"").trim()?Number(formData.get("costPrice")):null,
+      weightGrams:String(formData.get("weightGrams")||"").trim()?Number(formData.get("weightGrams")):null,
       selectedOptions,
     }),
   });
@@ -152,6 +168,8 @@ export async function updateVariantAction(productId:string,variantId:string,form
       price:Number(formData.get("price")||0),
       status:String(formData.get("status")||"active"),
       mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+      costPrice:String(formData.get("costPrice")||"").trim()?Number(formData.get("costPrice")):null,
+      weightGrams:String(formData.get("weightGrams")||"").trim()?Number(formData.get("weightGrams")):null,
     }),
   });
   revalidatePath("/products");
