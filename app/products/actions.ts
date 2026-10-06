@@ -101,6 +101,7 @@ export async function createVariantAction(id:string,formData:FormData){
       sku:String(formData.get("sku")||"").trim(),
       price:Number(formData.get("price")||0),
       compareAtPrice:formData.get("compareAtPrice")?Number(formData.get("compareAtPrice")):null,
+      inventory:Number(formData.get("inventory")||0),
       status:String(formData.get("status")||"active"),
       mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
       selectedOptions,
@@ -149,7 +150,6 @@ export async function updateVariantAction(productId:string,variantId:string,form
     body:JSON.stringify({
       sku:String(formData.get("sku")||"").trim(),
       price:Number(formData.get("price")||0),
-      inventory:Number(formData.get("inventory")||0),
       status:String(formData.get("status")||"active"),
       mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
     }),
