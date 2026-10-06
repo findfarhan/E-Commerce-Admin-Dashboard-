@@ -1,4 +1,4 @@
-import {Body,Controller,Get,Param,Post,UseGuards} from "@nestjs/common";
+import {Body,Controller,Delete,Get,Param,Patch,Post,UseGuards} from "@nestjs/common";
 import {AdminKeyGuard} from "../common/admin-key.guard";
 import {MediaService} from "./media.service";
 
@@ -13,6 +13,10 @@ export class MediaController{
   upload(@Param("productId") productId:string,@Body() body:any){return this.media.createUpload(productId,body);}
   @Post("media/:mediaId/finalize")
   finalize(@Param("mediaId") mediaId:string){return this.media.finalize(mediaId);}
+  @Patch("media/:mediaId")
+  update(@Param("mediaId") mediaId:string,@Body() body:any){return this.media.update(mediaId,body);}
+  @Delete("media/:mediaId")
+  remove(@Param("mediaId") mediaId:string){return this.media.delete(mediaId);}
   @Get("media/:mediaId/renditions")
   renditions(@Param("mediaId") mediaId:string){return this.media.renditions(mediaId);}
 }
