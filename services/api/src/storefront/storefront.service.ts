@@ -86,7 +86,7 @@ export class StorefrontService{
     const number=String(body?.orderNumber||"").trim().toUpperCase();
     const email=String(body?.email||"").trim().toLowerCase();
     const phone=String(body?.phone||"").replace(/\D/g,"");
-    if(!number||!email||!email.includes("@")||phone.length<4) throw new BadRequestException("Order number, email and phone are required");
+    if(!number||!email||!email.includes("@")||phone.length<10) throw new BadRequestException("Order number, email and a valid phone number are required");
 
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
     const result=await this.db.query<any>(
@@ -97,7 +97,7 @@ export class StorefrontService{
     if(!result.rowCount) throw new NotFoundException("Order not found");
     const order=result.rows[0];
     const storedPhone=String(order.phone||"").replace(/\D/g,"");
-    if(!storedPhone.endsWith(phone.slice(-4))) throw new NotFoundException("Order not found");
+    if(storedPhone.length<10||storedPhone.slice(-10)!==phone.slice(-10)) throw new NotFoundException("Order not found");
 
     const items=await this.db.query<any>(
       "select title,sku,selected_options,quantity,unit_price,line_total from order_items where order_id=$1 order by id",
