@@ -1,8 +1,9 @@
-import {Injectable} from "@nestjs/common";
+import {BadRequestException,Injectable,NotFoundException} from "@nestjs/common";
 import {CollectionsService} from "../collections/collections.service";
 import {ProductsService} from "../products/products.service";
 import {SeoService} from "../seo/seo.service";
 import {RedirectsService} from "../redirects/redirects.service";
+import {DatabaseService} from "../database/database.service";
 
 @Injectable()
 export class StorefrontService{
@@ -11,6 +12,7 @@ export class StorefrontService{
     private readonly collectionsService:CollectionsService,
     private readonly seoService:SeoService,
     private readonly redirectsService:RedirectsService,
+    private readonly db:DatabaseService,
   ){}
 
   products(){return this.productsService.listStorefront();}
@@ -78,6 +80,48 @@ export class StorefrontService{
     const normalized=String(path||"").trim();
     if(!normalized.startsWith("/")||normalized.startsWith("//")) return null;
     return this.redirectsService.resolve(normalized);
+  }
+
+  async orderLookup(body:any){
+    const number=String(body?.orderNumber||"").trim().toUpperCase();
+    const email=String(body?.email||"").trim().toLowerCase();
+    const phone=String(body?.phone||"").replace(/\D/g,"");
+    if(!number||!email||!email.includes("@")||phone.length<4) throw new BadRequestException("Order number, email and phone are required");
+
+    const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
+    const result=await this.db.query<any>(
+      "select o.id,o.order_number,o.status,o.payment_status,o.fulfillment_status,o.currency,o.total,o.shipping_method,o.created_at,c.email,c.phone from orders o join stores s on s.id=o.store_id left join customers c on c.id=o.customer_id where s.domain=$1 and upper(o.order_number)=$2 and lower(coalesce(c.email,''))=$3 limit 1",
+      [domain,number,email]
+    );
+
+    if(!result.rowCount) throw new NotFoundException("Order not found");
+    const order=result.rows[0];
+    const storedPhone=String(order.phone||"").replace(/\D/g,"");
+    if(!storedPhone.endsWith(phone.slice(-4))) throw new NotFoundException("Order not found");
+
+    const items=await this.db.query<any>(
+      "select title,sku,selected_options,quantity,unit_price,line_total from order_items where order_id=$1 order by id",
+      [order.id]
+    );
+
+    return {
+      orderNumber:order.order_number,
+      status:order.status,
+      paymentStatus:order.payment_status,
+      fulfillmentStatus:order.fulfillment_status,
+      currency:order.currency,
+      total:Number(order.total||0),
+      shippingMethod:order.shipping_method,
+      createdAt:order.created_at,
+      items:items.rows.map((item:any)=>({
+        title:item.title,
+        sku:item.sku,
+        selectedOptions:item.selected_options||{},
+        quantity:Number(item.quantity),
+        unitPrice:Number(item.unit_price),
+        lineTotal:Number(item.line_total),
+      })),
+    };
   }
 
   config(){
