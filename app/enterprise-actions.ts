@@ -192,3 +192,16 @@ export async function createAdminUserAction(formData:FormData){
   })},"team.manage");
   revalidatePath("/team");
 }
+
+export async function editEnterpriseOrderAction(id:string,formData:FormData){
+  const shipping={line1:text(formData,"line1"),line2:text(formData,"line2"),city:text(formData,"city"),region:text(formData,"region"),postalCode:text(formData,"postalCode"),country:text(formData,"country")||"Pakistan"};
+  await adminMutation("/v1/admin/order-editor/"+id,{method:"PATCH",body:JSON.stringify({
+    items:json(formData,"itemsJson",[]),
+    discountCode:text(formData,"discountCode")||null,
+    shippingRateId:text(formData,"shippingRateId")||undefined,
+    locationId:text(formData,"locationId")||undefined,
+    shippingAddress:shipping,billingAddress:shipping,
+    notes:text(formData,"notes")||null,
+  })},"orders.write");
+  revalidatePath("/orders");revalidatePath("/orders/"+id);revalidatePath("/inventory");revalidatePath("/analytics");
+}
