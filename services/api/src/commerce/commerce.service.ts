@@ -185,12 +185,27 @@ export class CommerceService{
   async audit(){const s=await this.store();const r=await this.db.query<any>("select * from audit_log where store_id=$1 order by created_at desc limit 500",[s.id]);return {items:r.rows};}
   async notifications(){const s=await this.store();const r=await this.db.query<any>("select * from notifications where store_id=$1 order by read_at nulls first,created_at desc limit 500",[s.id]);return {items:r.rows};}
   async report(){
-    const s=await this.store();const r=await this.db.query<any>(`select
-      coalesce(sum(total) filter(where created_at>=now()-interval '30 days'),0) revenue,
-      coalesce(sum(gross_profit) filter(where created_at>=now()-interval '30 days'),0) gross_profit,
-      count(*) filter(where created_at>=now()-interval '30 days')::int orders,
-      coalesce(avg(total) filter(where created_at>=now()-interval '30 days'),0) aov
-      from orders where store_id=$1`,[s.id]);
-    const inv=await this.db.query<any>("select coalesce(sum(v.inventory*coalesce(v.cost_price,0)),0) value,coalesce(sum(v.inventory),0)::int units from product_variants v join products p on p.id=v.product_id where p.store_id=$1",[s.id]);return {...r.rows[0],inventory_value:Number(inv.rows[0].value),inventory_units:Number(inv.rows[0].units)};
+    const s=await this.store();
+    const summary=await this.db.query<any>("select coalesce(sum(total) filter(where created_at>=now()-interval '30 days'),0) revenue,coalesce(sum(gross_profit) filter(where created_at>=now()-interval '30 days'),0) gross_profit,count(*) filter(where created_at>=now()-interval '30 days')::int orders,coalesce(avg(total) filter(where created_at>=now()-interval '30 days'),0) aov,count(distinct customer_id) filter(where created_at>=now()-interval '30 days')::int customers from orders where store_id=$1",[s.id]);
+    const inv=await this.db.query<any>("select coalesce(sum(v.inventory*coalesce(v.cost_price,0)),0) value,coalesce(sum(v.inventory),0)::int units from product_variants v join products p on p.id=v.product_id where p.store_id=$1",[s.id]);
+    const conversion=await this.db.query<any>("select count(*)::int total,count(*) filter(where status='completed')::int completed from checkout_sessions where store_id=$1 and created_at>=now()-interval '30 days'",[s.id]);
+    const repeat=await this.db.query<any>("select count(*)::int n from (select customer_id from orders where store_id=$1 and customer_id is not null and created_at>=now()-interval '365 days' group by customer_id having count(*)>1)x",[s.id]);
+    const products=await this.db.query<any>("select oi.product_id,oi.title,sum(oi.quantity)::int units,sum(oi.line_total) revenue from order_items oi join orders o on o.id=oi.order_id where o.store_id=$1 and o.created_at>=now()-interval '30 days' group by oi.product_id,oi.title order by revenue desc limit 50",[s.id]);
+    const variants=await this.db.query<any>("select oi.variant_id,oi.sku,sum(oi.quantity)::int units,sum(oi.line_total) revenue,coalesce(v.inventory,0)::int inventory,coalesce(v.cost_price,0) cost_price from order_items oi join orders o on o.id=oi.order_id left join product_variants v on v.id=oi.variant_id where o.store_id=$1 and o.created_at>=now()-interval '30 days' group by oi.variant_id,oi.sku,v.inventory,v.cost_price order by revenue desc limit 100",[s.id]);
+    const channels=await this.db.query<any>("select source_channel,count(*)::int orders,sum(total) revenue from orders where store_id=$1 and created_at>=now()-interval '30 days' group by source_channel order by revenue desc",[s.id]);
+    const locations=await this.db.query<any>("select coalesce(l.name,'Unassigned') location,count(o.id)::int orders,coalesce(sum(o.total),0) revenue from orders o left join locations l on l.id=o.fulfillment_location_id where o.store_id=$1 and o.created_at>=now()-interval '30 days' group by l.name order by revenue desc",[s.id]);
+    const collections=await this.db.query<any>("select c.id,c.title,sum(oi.quantity)::int units,sum(oi.line_total) revenue from collection_products cp join collections c on c.id=cp.collection_id join order_items oi on oi.product_id=cp.product_id join orders o on o.id=oi.order_id where c.store_id=$1 and o.created_at>=now()-interval '30 days' group by c.id,c.title order by revenue desc limit 50",[s.id]);
+    const row=summary.rows[0],check=conversion.rows[0];
+    return {
+      revenue:Number(row.revenue||0),gross_profit:Number(row.gross_profit||0),gross_margin:Number(row.revenue||0)>0?Math.round(Number(row.gross_profit||0)/Number(row.revenue)*10000)/100:0,
+      orders:Number(row.orders||0),aov:Number(row.aov||0),customers:Number(row.customers||0),repeat_customers:Number(repeat.rows[0]?.n||0),
+      checkout_conversion:Number(check?.total||0)>0?Math.round(Number(check.completed||0)/Number(check.total)*10000)/100:0,
+      inventory_value:Number(inv.rows[0].value),inventory_units:Number(inv.rows[0].units),
+      products:products.rows.map((x:any)=>({...x,revenue:Number(x.revenue)})),
+      variants:variants.rows.map((x:any)=>({...x,revenue:Number(x.revenue),cost_price:Number(x.cost_price||0)})),
+      channels:channels.rows.map((x:any)=>({...x,revenue:Number(x.revenue)})),
+      locations:locations.rows.map((x:any)=>({...x,revenue:Number(x.revenue)})),
+      collections:collections.rows.map((x:any)=>({...x,revenue:Number(x.revenue)})),
+    };
   }
 }
