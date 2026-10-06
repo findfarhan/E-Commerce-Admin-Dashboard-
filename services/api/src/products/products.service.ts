@@ -47,7 +47,7 @@ export class ProductsService{
 
   private async getDetailBy(field:"id"|"handle",value:string,storefront:boolean){
     const storeId=await this.storeId();
-    const sql="select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price_amount, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory from products p where p.store_id=$1 and p."+field+"=$2 "+(storefront?"and p.status='active' ":"")+"limit 1";
+    const sql="select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price_amount, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory from products p where p.store_id=$1 and p."+field+"=$2 "+(storefront?"and p.status='active' and (p.published_at is null or p.published_at<=now()) ":"")+"limit 1";
     const productResult=await this.db.query<any>(sql,[storeId,value]);
     if(!productResult.rowCount) throw new NotFoundException("Product not found");
     const product=productResult.rows[0];
@@ -70,6 +70,10 @@ export class ProductsService{
     const media=await this.db.query<any>(
       "select pm.*, coalesce((select json_agg(json_build_object('preset',mr.preset,'format',mr.format,'objectKey',mr.object_key,'width',mr.width,'height',mr.height,'status',mr.status) order by mr.preset,mr.format) from media_renditions mr where mr.media_id=pm.id and mr.status='ready'),'[]') as stored_renditions from product_media pm where pm.product_id=$1 order by pm.position,pm.created_at",
       [product.id]
+    );
+    const metafields=await this.db.query<any>(
+      "select md.namespace,md.key,md.name,md.value_type,mv.value from metafield_values mv join metafield_definitions md on md.id=mv.definition_id where mv.owner_type='product' and mv.owner_id=$1 and mv.store_id=$2 order by md.position,md.namespace,md.key",
+      [product.id,storeId]
     );
 
     const normalizedMedia=media.rows.map((m:any)=>{
@@ -104,13 +108,14 @@ export class ProductsService{
       variants:variants.rows,
       mediaSets:mediaSets.rows,
       media:normalizedMedia,
+      metafields:metafields.rows,
     };
   }
 
   async listStorefront(){
     const storeId=await this.storeId();
     const products=await this.db.query<any>(
-      "select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price_amount, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory from products p where p.store_id=$1 and p.status='active' order by p.created_at",
+      "select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price_amount, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory from products p where p.store_id=$1 and p.status='active' and (p.published_at is null or p.published_at<=now()) order by p.created_at",
       [storeId]
     );
 
@@ -144,6 +149,12 @@ export class ProductsService{
         category:p.category||"Jewelry",
         story:this.descriptionText(p.description),
         material:p.material||"",
+        vendor:p.vendor||"",
+        productType:p.product_type||"",
+        tags:p.tags||[],
+        searchAttributes:p.search_attributes||{},
+        taxable:p.taxable!==false,
+        weightGrams:p.weight_grams===null?null:Number(p.weight_grams),
         sku:null,
         availability:Number(p.inventory)>0?"InStock":"OutOfStock",
         featured:p.featured,
