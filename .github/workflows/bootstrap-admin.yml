@@ -1,0 +1,50 @@
+name: Bootstrap Jewelry Admin
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_BLOB_SHA: efcc65cc6af7e24742ec28eb51226475492643d0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download source blob
+        run: |
+          mkdir -p .bootstrap
+          gh api "repos/${GITHUB_REPOSITORY}/git/blobs/${SOURCE_BLOB_SHA}" --jq '.content' \
+            | tr -d '\n' \
+            | base64 -d > .bootstrap/admin-source.tar.gz
+
+      - name: Extract project
+        run: |
+          mkdir -p .bootstrap/extracted
+          tar -xzf .bootstrap/admin-source.tar.gz -C .bootstrap/extracted
+          rsync -a \
+            --exclude ".git/" \
+            --exclude ".github/" \
+            --exclude ".bootstrap/" \
+            .bootstrap/extracted/jewelry-admin-seo-channels/ ./
+          rm -rf .bootstrap
+          rm -f .bootstrap
+          rm -f .github/workflows/bootstrap-admin.yml
+
+      - name: Commit imported project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: initialize jewelry commerce admin CRM"
+          git push origin HEAD:main
