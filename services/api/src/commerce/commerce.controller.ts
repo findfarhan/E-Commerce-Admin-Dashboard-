@@ -32,7 +32,7 @@ export class CommerceController{
   @Post("returns") createReturn(@Body() b:any){return this.commerce.createReturn(b);}
   @Post("returns/:id/complete") completeReturn(@Param("id") id:string,@Body() b:any){return this.commerce.completeReturn(id,b);}
   @Get("customers/:id/addresses") addresses(@Param("id") id:string){return this.commerce.customerAddresses(id);}
-  @Post("customers/:id/addresses") address(@Param("id") id:string,@Body() b:any){return this.commerce.addCustomerAddress(id,b);}
+  @Post("customers/:id/addresses") address(@Param("id") id:string,@Body() b:any){return this.commerce.addCustomerAddress(id,b);}\n  @Get("customers/:id/tags") customerTags(@Param("id") id:string){return this.commerce.customerTags(id);}\n  @Post("customers/:id/tags") setCustomerTags(@Param("id") id:string,@Body() b:any){return this.commerce.setCustomerTags(id,b);}
   @Get("suppliers") suppliers(){return this.commerce.suppliers();}
   @Post("suppliers") supplier(@Body() b:any){return this.commerce.createSupplier(b);}
   @Get("purchase-orders") purchaseOrders(){return this.commerce.purchaseOrders();}
