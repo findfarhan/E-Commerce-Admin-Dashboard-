@@ -75,6 +75,11 @@ export class PlatformController{
   @Post("purchase-orders/:id/order") orderPurchaseOrder(@Param("id") id:string,@Body() body:any){return this.procurement.orderPurchaseOrder(id,body);}
   @Post("purchase-orders/:id/receive") receivePurchaseOrder(@Param("id") id:string,@Body() body:any){return this.procurement.receivePurchaseOrder(id,body);}
 
+  @Post("auth/bootstrap") bootstrapAdmin(@Body() body:any){return this.governance.bootstrapAdmin(body);}
+  @Post("auth/login") login(@Body() body:any){return this.governance.login(body);}
+  @Post("auth/users") createAdminUser(@Body() body:any){return this.governance.createAdminUser(body);}
+  @Patch("auth/users/:id") updateAdminUser(@Param("id") id:string,@Body() body:any){return this.governance.updateAdminUser(id,body);}
+
   @Get("audit-logs") auditLogs(@Query("limit") limit?:string){return this.governance.logs(Number(limit||200));}
   @Get("notifications") notifications(@Query("status") status?:string){return this.governance.notifications(status);}
   @Patch("notifications/:id") notification(@Param("id") id:string,@Body() body:any){return this.governance.markNotification(id,String(body?.status||"read"));}
