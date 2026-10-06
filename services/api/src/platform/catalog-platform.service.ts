@@ -97,7 +97,7 @@ export class CatalogPlatformService{
   async setMetafields(ownerType:string,ownerId:string,body:any){
     const storeId=await this.context.storeId();
     const values=Array.isArray(body?.values)?body.values:[];
-    return this.db.transaction(async client=>{
+    await this.db.transaction(async client=>{
       const saved:any[]=[];
       for(const entry of values){
         const defResult=await client.query<any>("select * from metafield_definitions where id=$1 and store_id=$2 and owner_type=$3",[String(entry.definitionId),storeId,ownerType]);
@@ -118,23 +118,27 @@ export class CatalogPlatformService{
         saved.push(result.rows[0]);
       }
       await this.governance.audit(storeId,"metafields.updated",ownerType,ownerId,{after:saved,metadata:{count:saved.length}},client);
-      return this.metafields(ownerType,ownerId);
     });
+    return this.metafields(ownerType,ownerId);
   }
 
   async updateProductOrganization(productId:string,body:any){
     const storeId=await this.context.storeId();
     const current=await this.db.query<any>("select * from products where id=$1 and store_id=$2",[productId,storeId]);
     if(!current.rowCount) throw new NotFoundException("Product not found");
-    const publishedAt=body?.publishedAt?new Date(body.publishedAt):null;
-    if(body?.publishedAt&&Number.isNaN(publishedAt!.getTime())) throw new BadRequestException("Invalid publish date");
-    const weight=body?.weightGrams===null||body?.weightGrams===""?null:Number(body?.weightGrams);
-    if(weight!==null&&(!Number.isFinite(weight)||weight<0)) throw new BadRequestException("Invalid product weight");
-    const tags=Array.isArray(body?.tags)?body.tags.map((x:any)=>String(x).trim()).filter(Boolean):String(body?.tags||"").split(",").map((x:string)=>x.trim()).filter(Boolean);
+    const publishedAt=body?.publishedAt===undefined
+      ?current.rows[0].published_at
+      :(body.publishedAt?new Date(body.publishedAt):null);
+    if(body?.publishedAt&&publishedAt instanceof Date&&Number.isNaN(publishedAt.getTime())) throw new BadRequestException("Invalid publish date");
+    const weight=body?.weightGrams===undefined?current.rows[0].weight_grams:(body.weightGrams===null||body.weightGrams===""?null:Number(body.weightGrams));
+    if(weight!==null&&(!Number.isFinite(Number(weight))||Number(weight)<0)) throw new BadRequestException("Invalid product weight");
+    const tags=body?.tags===undefined
+      ?(current.rows[0].tags||[])
+      :(Array.isArray(body.tags)?body.tags.map((x:any)=>String(x).trim()).filter(Boolean):String(body.tags||"").split(",").map((x:string)=>x.trim()).filter(Boolean));
     const result=await this.db.query<any>(
       `update products set vendor=$1,product_type=$2,tags=$3,published_at=$4,search_attributes=$5::jsonb,taxable=$6,weight_grams=$7,updated_at=now()
        where id=$8 and store_id=$9 returning *`,
-      [String(body?.vendor||"").trim()||null,String(body?.productType||"").trim()||null,tags,publishedAt?.toISOString()||null,JSON.stringify(body?.searchAttributes||{}),body?.taxable!==false,weight,productId,storeId]
+      [body?.vendor===undefined?current.rows[0].vendor:(String(body.vendor||"").trim()||null),body?.productType===undefined?current.rows[0].product_type:(String(body.productType||"").trim()||null),tags,publishedAt instanceof Date?publishedAt.toISOString():publishedAt,JSON.stringify(body?.searchAttributes===undefined?(current.rows[0].search_attributes||{}):(body.searchAttributes||{})),body?.taxable===undefined?current.rows[0].taxable:body.taxable!==false,weight,productId,storeId]
     );
     await this.governance.audit(storeId,"product.organization.updated","product",productId,{before:current.rows[0],after:result.rows[0]});
     return result.rows[0];
@@ -142,11 +146,11 @@ export class CatalogPlatformService{
 
   async setVariantCost(variantId:string,body:any){
     const storeId=await this.context.storeId();
-    const cost=Number(body?.costAmount??0);
-    const weight=body?.weightGrams===null||body?.weightGrams===""?null:Number(body?.weightGrams);
-    if(!Number.isFinite(cost)||cost<0||weight!==null&&(!Number.isFinite(weight)||weight<0)) throw new BadRequestException("Invalid variant cost or weight");
     const before=await this.db.query<any>("select v.* from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2",[variantId,storeId]);
     if(!before.rowCount) throw new NotFoundException("Variant not found");
+    const cost=body?.costAmount===undefined?Number(before.rows[0].cost_amount||0):Number(body.costAmount);
+    const weight=body?.weightGrams===undefined?before.rows[0].weight_grams:(body.weightGrams===null||body.weightGrams===""?null:Number(body.weightGrams));
+    if(!Number.isFinite(cost)||cost<0||weight!==null&&(!Number.isFinite(Number(weight))||Number(weight)<0)) throw new BadRequestException("Invalid variant cost or weight");
     const result=await this.db.query<any>("update product_variants set cost_amount=$1,weight_grams=$2,updated_at=now() where id=$3 returning *",[cost,weight,variantId]);
     await this.governance.audit(storeId,"variant.cost.updated","variant",variantId,{before:before.rows[0],after:result.rows[0]});
     return result.rows[0];
