@@ -25,6 +25,10 @@ export class SourceUrlStorage implements ObjectStorage{
     return this.unavailable();
   }
 
+  async delete(_key:string):Promise<void>{
+    return;
+  }
+
   publicUrl(_key:string){
     return null;
   }
