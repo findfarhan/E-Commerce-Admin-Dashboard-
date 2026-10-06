@@ -25,8 +25,14 @@ export default async function EditProductPage({params}:{params:Promise<{id:strin
           <label className="field"><span>Handle</span><input name="handle" required defaultValue={(product as any).handle||""}/></label>
           <label className="field"><span>Status</span><select name="status" defaultValue={product.status}><option value="draft">Draft</option><option value="active">Active</option></select></label>
           <label className="field"><span>Category</span><input name="category" defaultValue={(product as any).category||""}/></label>
-          <label className="field"><span>Material</span><input name="material" defaultValue={(product as any).material||""}/></label>
-          <label className="field"><span>Tag</span><input name="tag" defaultValue={(product as any).tag||""}/></label>
+          <label className="field"><span>Material</span><input name="material" defaultValue={product.material||""}/></label>
+          <label className="field"><span>Vendor / brand</span><input name="vendor" defaultValue={product.vendor||""}/></label>
+          <label className="field"><span>Product type</span><input name="productType" defaultValue={product.productType||""} placeholder="Ring"/></label>
+          <label className="field"><span>Primary tag</span><input name="tag" defaultValue={product.tag||""}/></label>
+          <label className="field"><span>Tags</span><input name="tags" defaultValue={(product.tags||[]).join(", ")}/></label>
+          <label className="field"><span>Weight (g)</span><input name="weightGrams" type="number" min="0" step=".001" defaultValue={product.weightGrams??""}/></label>
+          <label className="field"><span>Publish at</span><input name="publishedAt" type="datetime-local" defaultValue={product.publishedAt?new Date(product.publishedAt).toISOString().slice(0,16):""}/></label>
+          <label className="field"><span>Taxable</span><input name="taxable" type="checkbox" defaultChecked={product.taxable!==false}/></label>
           <label className="field"><span>Featured</span><input name="featured" type="checkbox" defaultChecked={Boolean((product as any).featured)}/></label>
           <div className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><RichTextEditor name="description" value={(product as any).description||""}/></div>
         </div>
