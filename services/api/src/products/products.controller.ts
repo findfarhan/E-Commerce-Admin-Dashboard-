@@ -1,4 +1,4 @@
-import {Body,Controller,Delete,Get,Param,Patch,Post,UseGuards} from "@nestjs/common";
+import {Body,Controller,Delete,Get,Param,Patch,Post,Query,UseGuards} from "@nestjs/common";
 import {AdminKeyGuard} from "../common/admin-key.guard";
 import {ProductsService} from "./products.service";
 
@@ -6,7 +6,7 @@ import {ProductsService} from "./products.service";
 @UseGuards(AdminKeyGuard)
 export class ProductsController{
   constructor(private readonly products:ProductsService){}
-  @Get() list(){return this.products.listAdmin();}
+  @Get() list(@Query() query:any){return this.products.listAdmin(query);}
   @Get(":id") detail(@Param("id") id:string){return this.products.getAdminDetail(id);}
   @Post() create(@Body() body:any){return this.products.createProduct(body);}
   @Patch(":id") update(@Param("id") id:string,@Body() body:any){return this.products.updateProduct(id,body);}
