@@ -7,6 +7,7 @@ import {CommerceService} from "./commerce.service";
 export class CommerceController{
   constructor(private readonly commerce:CommerceService){}
   @Get("overview") overview(){return this.commerce.overview();}
+  @Get("order-catalog") orderCatalog(){return this.commerce.orderCatalog();}
   @Get("locations") locations(){return this.commerce.locations();}
   @Post("locations") createLocation(@Body() b:any){return this.commerce.createLocation(b);}
   @Post("locations/:locationId/variants/:variantId/adjust") adjust(@Param("locationId") l:string,@Param("variantId") v:string,@Body() b:any){return this.commerce.adjustLocationStock(l,v,b);}
