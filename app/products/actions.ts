@@ -2,10 +2,12 @@
 
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
+import {requireAdminPermission} from "@/lib/admin-server-session";
 
 const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
 
 async function request(path:string,init:RequestInit){
+  const session=await requireAdminPermission("catalog.write");
   const adminKey=process.env.ADMIN_API_KEY;
   if(!adminKey) throw new Error("ADMIN_API_KEY is not configured on the Admin Vercel project.");
   const response=await fetch(apiBase+path,{
@@ -13,6 +15,8 @@ async function request(path:string,init:RequestInit){
     headers:{
       "Content-Type":"application/json",
       "X-Admin-Key":adminKey,
+      "X-Admin-Actor":session.email,
+      "X-Admin-Role":session.role,
       ...(init.headers||{}),
     },
     cache:"no-store",
