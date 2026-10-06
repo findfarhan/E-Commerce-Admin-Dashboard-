@@ -26,6 +26,7 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   return <>
     <PageHeader eyebrow="PRODUCT STUDIO" title={product.name} description="Canonical product, sellable variants, inventory, visual media rules, SEO and channel overlays.">
       <Link className="secondary-button" href={"/products/"+id+"/edit"}>Edit core</Link>
+      <form action={duplicateProduct}><button className="secondary-button" type="submit">Duplicate</button></form>
       <form action={archiveProduct}><button className="secondary-button" type="submit">Archive product</button></form>
       <Link className="primary-button" href="/products">Catalog</Link>
     </PageHeader>
