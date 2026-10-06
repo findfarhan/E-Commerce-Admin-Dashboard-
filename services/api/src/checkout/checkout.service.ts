@@ -150,12 +150,20 @@ export class CheckoutService{
     let taxableBase=Math.max(0,Number(taxable.rows[0]?.amount||0)-discountAmount);
     const taxRules=await this.db.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,shipping.country,shipping.region]);
     let taxAmount=0;
+    let exclusiveTaxAmount=0;
     for(const rule of taxRules.rows){
       const rate=Number(rule.rate||0);
-      taxAmount+=rule.inclusive?taxableBase*rate/(1+rate):taxableBase*rate;
+      if(rule.inclusive){
+        taxAmount+=taxableBase*rate/(1+rate);
+      }else{
+        const amount=taxableBase*rate;
+        taxAmount+=amount;
+        exclusiveTaxAmount+=amount;
+      }
     }
     taxAmount=Math.round(taxAmount*100)/100;
-    const total=Math.max(0,subtotal-discountAmount+shippingAmount+taxAmount);
+    exclusiveTaxAmount=Math.round(exclusiveTaxAmount*100)/100;
+    const total=Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount);
     const isGift=Boolean(body?.isGift);
     const giftMessage=isGift?String(body?.giftMessage||"").trim().slice(0,500):null;
 
