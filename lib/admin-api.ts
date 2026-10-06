@@ -33,7 +33,7 @@ export async function getAdminProducts():Promise<Product[]>{
     inventory:Number(p.inventory||0),price:Number(p.price||0),status:p.status,sales30d:0,
     variantCount:Number(p.variant_count||0),mediaSetCount:Number(p.media_set_count||0),
     handle:p.handle,description:p.description||"",category:p.category||"",material:p.material||"",
-    tag:p.tag||"",featured:Boolean(p.featured),
+    tag:p.tag||"",featured:Boolean(p.featured),productType:p.product_type||"",vendor:p.vendor||"",publishedAt:p.published_at||null,taxable:p.taxable!==false,weightGrams:p.weight_grams===null?null:Number(p.weight_grams),
   }));
 }
 
@@ -46,7 +46,7 @@ export async function getAdminProductDetail(id:string){
     name:response.product.title,inventory:Number(response.product.inventory||0),price:Number(response.product.price_amount||0),
     status:response.product.status,sales30d:0,variantCount:response.variants?.length||0,mediaSetCount:response.mediaSets?.length||0,
     handle:response.product.handle,description:response.product.description||"",category:response.product.category||"",
-    material:response.product.material||"",tag:response.product.tag||"",featured:Boolean(response.product.featured),
+    material:response.product.material||"",tag:response.product.tag||"",featured:Boolean(response.product.featured),productType:response.product.product_type||"",vendor:response.product.vendor||"",tags:response.product.tags||[],publishedAt:response.product.published_at||null,taxable:response.product.taxable!==false,weightGrams:response.product.weight_grams===null?null:Number(response.product.weight_grams),
   };
 
   const options:ProductOption[]=(response.options||[]).map((o:any)=>({
@@ -58,7 +58,7 @@ export async function getAdminProductDetail(id:string){
     const selectedOptions=v.selected_options||{};
     return {
       id:v.id,productId:v.product_id,sku:v.sku,title:v.title||Object.values(selectedOptions).join(" / "),
-      price:Number(v.price||0),inventory:Number(v.inventory||0),selectedOptions,status:v.status==="draft"?"draft":"active",mediaSetId:v.media_set_id||null,
+      price:Number(v.price||0),inventory:Number(v.inventory||0),selectedOptions,status:v.status==="draft"?"draft":"active",mediaSetId:v.media_set_id||null,costPrice:v.cost_price===null?null:Number(v.cost_price),weightGrams:v.weight_grams===null?null:Number(v.weight_grams),
     };
   });
 
