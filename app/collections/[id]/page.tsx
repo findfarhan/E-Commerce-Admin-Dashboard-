@@ -10,6 +10,7 @@ export default async function CollectionDetailPage({params}:{params:Promise<{id:
   if(!detail) notFound();
   const collection=detail.collection;
   const selected=new Set((detail.products||[]).map((p:any)=>p.id));
+  const positions=new Map((detail.products||[]).map((p:any)=>[p.id,Number(p.position||0)]));
   const action=updateCollectionAction.bind(null,id);
   const seoAction=saveCollectionSeoAction.bind(null,id,collection.handle);
 
@@ -35,9 +36,10 @@ export default async function CollectionDetailPage({params}:{params:Promise<{id:
         <h2>Products</h2>
         <p>Select the products that belong to this curated collection. Ordering follows the catalog order for now.</p>
         <div className="seo-check-list">
-          {products.map(product=><label key={product.id} style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:12,alignItems:"center"}}>
+          {products.map((product,index)=><label key={product.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 90px auto",gap:12,alignItems:"center"}}>
             <input type="checkbox" name="productIds" value={product.id} defaultChecked={selected.has(product.id)}/>
             <span><b>{product.name}</b><small style={{display:"block"}}>{product.category||"Jewelry"} · {product.sku}</small></span>
+            <input name={"position__"+product.id} type="number" min="0" defaultValue={positions.get(product.id)??index} aria-label={"Position for "+product.name}/>
             <em>{product.status}</em>
           </label>)}
         </div>
