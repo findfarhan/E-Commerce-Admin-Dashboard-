@@ -17,6 +17,12 @@ export class CommerceService{
     await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,after_state,metadata) values($1,'admin',$2,$3,$4,$5::jsonb,$6::jsonb)",[storeId,action,type,String(id||""),JSON.stringify(after||{}),JSON.stringify(metadata||{})]);
   }
 
+  async orderCatalog(){
+    const s=await this.store();
+    const r=await this.db.query<any>("select v.id variant_id,v.sku,v.price,v.inventory,v.cost_price,p.id product_id,p.title,p.status,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) selected_options from product_variants v join products p on p.id=v.product_id where p.store_id=$1 and p.status<>'archived' and v.status='active' order by p.title,v.sku",[s.id]);
+    return {items:r.rows.map((x:any)=>({...x,price:Number(x.price),inventory:Number(x.inventory),cost_price:x.cost_price===null?null:Number(x.cost_price)}))};
+  }
+
   async overview(){
     const s=await this.store();
     const q=await this.db.query<any>(`select
