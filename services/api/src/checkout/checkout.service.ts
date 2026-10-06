@@ -35,7 +35,8 @@ export class CheckoutService{
     return this.db.transaction(async client=>{
       const priced:any[]=[];
       for(const item of requested){
-        const quantity=Math.max(1,Math.min(25,Number(item.quantity||1)));
+        const quantity=Number(item.quantity??1);
+        if(!Number.isInteger(quantity)||quantity<1||quantity>25) throw new BadRequestException("Cart quantities must be whole numbers between 1 and 25");
         let found:any;
         if(item.variantId){
           found=await client.query<any>("select v.id as variant_id,v.sku,v.price,v.inventory,p.id as product_id,p.handle,p.title,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 and p.status='active' and v.status='active' limit 1",[item.variantId,store.id]);
