@@ -11,6 +11,10 @@ export class ProductsService{
     private readonly delivery:ImageDeliveryService,
   ){}
 
+  private async auditProduct(storeId:string,action:string,resourceId:string,before:any,after:any,metadata:any={}){
+    await this.db.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state,metadata) values($1,'admin',$2,'product',$3,$4::jsonb,$5::jsonb,$6::jsonb)",[storeId,action,resourceId,JSON.stringify(before||null),JSON.stringify(after||null),JSON.stringify(metadata||{})]);
+  }
+
   private sanitizeDescription(value:any){
     if(value===null||value===undefined) return null;
     const clean=sanitizeHtml(String(value),{
