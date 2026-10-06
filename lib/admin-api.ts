@@ -1,5 +1,4 @@
 import type {Customer,Order,Product,ProductMediaSet,ProductOption,ProductVariant} from "./types";
-import {customers as fallbackCustomers,orders as fallbackOrders,products as fallbackProducts,productMediaSetsByProduct,productOptionsByProduct,productVariantsByProduct,store as fallbackStore} from "./mock-data";
 
 const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
 const adminKey=process.env.ADMIN_API_KEY||"";
@@ -28,7 +27,7 @@ export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>
 
 export async function getAdminProducts():Promise<Product[]>{
   const response=await adminRequest<{items:any[]}>("/v1/admin/products");
-  if(!response) return fallbackProducts;
+  if(!response) return [];
   return response.items.map((p:any)=>({
     id:p.id,storeId:p.store_id,sku:p.primary_sku||"—",name:p.title,
     inventory:Number(p.inventory||0),price:Number(p.price||0),status:p.status,sales30d:0,
@@ -40,11 +39,7 @@ export async function getAdminProducts():Promise<Product[]>{
 
 export async function getAdminProductDetail(id:string){
   const response=await adminRequest<any>("/v1/admin/products/"+encodeURIComponent(id));
-  if(!response){
-    const product=fallbackProducts.find(p=>p.id===id);
-    if(!product) return null;
-    return {product,options:productOptionsByProduct[id]??[],variants:productVariantsByProduct[id]??[],mediaSets:productMediaSetsByProduct[id]??[],media:[],source:"fallback" as const};
-  }
+  if(!response) return null;
 
   const product:Product={
     id:response.product.id,storeId:response.product.store_id,sku:response.variants?.[0]?.sku||"—",
@@ -79,7 +74,7 @@ export async function getAdminProductDetail(id:string){
 
 export async function getAdminOrders():Promise<Order[]>{
   const response=await adminRequest<{items:any[]}>("/v1/admin/orders",10);
-  if(!response) return fallbackOrders;
+  if(!response) return [];
   return response.items.map((o:any)=>({
     id:o.id,storeId:"",number:o.order_number,customer:o.customer_name||"Guest",email:o.customer_email||"",
     total:Number(o.total||0),status:o.status,paymentStatus:o.payment_status,items:Number(o.item_count||0),
@@ -93,7 +88,7 @@ export async function getAdminOrderDetail(id:string){
 
 export async function getAdminCustomers():Promise<Customer[]>{
   const response=await adminRequest<{items:any[]}>("/v1/admin/customers",15);
-  if(!response) return fallbackCustomers;
+  if(!response) return [];
   return response.items.map((c:any)=>({
     id:c.id,storeId:"",name:c.name||"Guest",email:c.email||"",segment:c.attributes?.segment||"customer",
     orders:Number(c.orders_count||0),lifetimeValue:Number(c.lifetime_value||0),
@@ -122,9 +117,9 @@ export async function getAdminDashboard(){
   const response=await adminRequest<any>("/v1/admin/dashboard",10);
   if(!response){
     return {
-      id:fallbackStore.id,name:fallbackStore.name,domain:fallbackStore.domain,currency:fallbackStore.currency,timezone:fallbackStore.timezone,
-      products:fallbackProducts.length,customers:fallbackStore.customers,orders_today:fallbackStore.ordersToday,revenue_today:fallbackStore.revenueToday,
-      queued_jobs:0,low_stock_variants:0,source:"fallback" as const,
+      id:"",name:"Jewelry Store",domain:"",currency:"PKR",timezone:"Asia/Karachi",
+      products:0,customers:0,orders_today:0,revenue_today:0,queued_jobs:0,low_stock_variants:0,
+      new_commissions:0,subscribers:0,open_checkouts:0,recent_activity:[],source:"unconfigured" as const,
     };
   }
   return {...response,source:"api" as const};
