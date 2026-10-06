@@ -8,7 +8,7 @@ export default async function Products(){
 
   return <>
     <PageHeader eyebrow="CATALOG" title="Products" description="Canonical catalog shared by storefront, feeds, social channels and CRM.">
-      {first&&<Link className="primary-button" href={"/products/"+first.id}>Open variant studio</Link>}
+      <Link className="secondary-button" href="/products/new">+ New product</Link>\n      {first&&<Link className="primary-button" href={"/products/"+first.id}>Open variant studio</Link>}
     </PageHeader>
 
     <div className="panel table-wrap">
