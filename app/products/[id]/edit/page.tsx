@@ -26,7 +26,13 @@ export default async function EditProductPage({params}:{params:Promise<{id:strin
           <label className="field"><span>Status</span><select name="status" defaultValue={product.status}><option value="draft">Draft</option><option value="active">Active</option></select></label>
           <label className="field"><span>Category</span><input name="category" defaultValue={(product as any).category||""}/></label>
           <label className="field"><span>Material</span><input name="material" defaultValue={(product as any).material||""}/></label>
-          <label className="field"><span>Tag</span><input name="tag" defaultValue={(product as any).tag||""}/></label>
+          <label className="field"><span>Legacy badge/tag</span><input name="tag" defaultValue={(product as any).tag||""}/></label>
+          <label className="field"><span>Product type</span><input name="productType" defaultValue={(product as any).product_type||""}/></label>
+          <label className="field"><span>Vendor / brand</span><input name="vendor" defaultValue={(product as any).vendor||""}/></label>
+          <label className="field"><span>Tags</span><input name="tags" defaultValue={((product as any).tags||[]).join(", ")}/></label>
+          <label className="field"><span>Publish at</span><input name="publishedAt" type="datetime-local" defaultValue={(product as any).published_at?new Date((product as any).published_at).toISOString().slice(0,16):""}/></label>
+          <label className="field"><span>Product weight (g)</span><input name="weightGrams" type="number" min="0" defaultValue={(product as any).weight_grams??""}/></label>
+          <label className="field"><span>Taxable</span><input name="taxable" type="checkbox" defaultChecked={(product as any).taxable!==false}/></label>
           <label className="field"><span>Featured</span><input name="featured" type="checkbox" defaultChecked={Boolean((product as any).featured)}/></label>
           <div className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><RichTextEditor name="description" value={(product as any).description||""}/></div>
         </div>
