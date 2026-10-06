@@ -112,11 +112,13 @@ export class StorefrontService{
   async collection(handle:string){
     const collection=await this.collectionsService.storefrontDetail(handle);
     const products=await this.products({});
-    const wanted=new Set(collection.productHandles||[]);
+    const order=collection.productHandles||[];
+    const bySlug=new Map(products.map((product:any)=>[product.slug,product]));
+    const orderedProducts=order.map((slug:string)=>bySlug.get(slug)).filter(Boolean);
     const seo=await this.seoService.storefront("collection",collection.id);
     return {
       ...collection,
-      products:products.filter((product:any)=>wanted.has(product.slug)),
+      products:orderedProducts,
       seo:seo?{
         title:seo.title||undefined,
         description:seo.meta_description||undefined,
@@ -128,11 +130,10 @@ export class StorefrontService{
   }
 
   async search(raw:string){
-    const q=String(raw||"").trim().toLowerCase();
-    if(q.length<2) return {query:q,items:[]};
-    const products=await this.productsService.listStorefront();
-    const items=products.filter((product:any)=>[product.name,product.category,product.material,product.tag,product.story].some(value=>String(value||"").toLowerCase().includes(q))).slice(0,24);
-    return {query:q,items};
+    const q=String(raw||"").trim();
+    if(q.length<2) return {query:q.toLowerCase(),items:[]};
+    const items=(await this.products({q})).slice(0,24);
+    return {query:q.toLowerCase(),items};
   }
 
   async redirect(path:string){
