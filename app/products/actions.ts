@@ -218,3 +218,18 @@ export async function archiveProductAction(productId:string){
   revalidatePath("/products");
   redirect("/products");
 }
+
+
+export async function createSourceMediaAction(productId:string,formData:FormData){
+  await request("/v1/admin/products/"+encodeURIComponent(productId)+"/media/source",{
+    method:"POST",
+    body:JSON.stringify({
+      sourceUrl:String(formData.get("sourceUrl")||"").trim(),
+      altText:String(formData.get("altText")||"").trim()||null,
+      role:String(formData.get("role")||"gallery"),
+      position:Number(formData.get("position")||0),
+      mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+    }),
+  });
+  revalidatePath("/products/"+productId);
+}
