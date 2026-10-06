@@ -45,10 +45,19 @@ export class StorefrontService{
     const min=filters.minPrice!==undefined?Number(filters.minPrice):null;
     const max=filters.maxPrice!==undefined?Number(filters.maxPrice):null;
     const q=String(filters.q||"").trim().toLowerCase();
+    let sizeProducts:Set<string>|null=null;
+    if(filters.size&&ids.length){
+      const sr=await this.db.query<any>("select distinct p.id from products p join product_variants v on v.product_id=p.id join variant_option_values vv on vv.variant_id=v.id join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where p.id=any($1::uuid[]) and lower(o.name)='size' and lower(ov.value)=lower($2)",[ids,String(filters.size)]);
+      sizeProducts=new Set(sr.rows.map((x:any)=>String(x.id)));
+    }
     const filtered=items.filter((p:any)=>{
       const mf=metafields.get(p.id)||{};
       if(filters.category&&String(p.category||"").toLowerCase()!==String(filters.category).toLowerCase()) return false;
-      if(filters.material&&!String(p.material||"").toLowerCase().includes(String(filters.material).toLowerCase())) return false;
+      const materialFilter=filters.material||filters.metal;
+      if(materialFilter&&!String(p.material||"").toLowerCase().includes(String(materialFilter).toLowerCase())) return false;
+      if(filters.stone){const v=mf["custom.stone_type"];if(!String(Array.isArray(v)?v.join(","):v??"").toLowerCase().includes(String(filters.stone).toLowerCase())) return false;}
+      if(filters.gender){const v=mf["custom.gender"];if(!String(Array.isArray(v)?v.join(","):v??"").toLowerCase().includes(String(filters.gender).toLowerCase())) return false;}
+      if(sizeProducts&&!sizeProducts.has(String(p.id))) return false;
       if(filters.availability==="in_stock"&&p.availability!=="InStock") return false;
       if(filters.availability==="out_of_stock"&&p.availability!=="OutOfStock") return false;
       if(min!==null&&Number.isFinite(min)&&Number(p.priceAmount)<min) return false;
