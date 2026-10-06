@@ -72,7 +72,11 @@ export class CheckoutService{
       status:row.status,
       currency:row.currency,
       subtotal:Number(row.subtotal),
+      discount_code:row.discount_code||null,
+      discount_amount:Number(row.discount_amount||0),
       shipping_amount:Number(row.shipping_amount||0),
+      tax_amount:Number(row.tax_amount||0),
+      total:Number(row.total??(Number(row.subtotal||0)-Number(row.discount_amount||0)+Number(row.shipping_amount||0)+Number(row.tax_amount||0))),
       payment_method:row.payment_method,
       expires_at:row.expires_at,
       items:lines.rows.map(line=>({...line,unit_price:Number(line.unit_price),line_total:Number(line.line_total)})),
@@ -240,7 +244,7 @@ export class CheckoutService{
       const discountAmount=Number(checkout.discount_amount||0);
       const shippingAmount=Number(checkout.shipping_amount||0);
       const taxAmount=Number(checkout.tax_amount||0);
-      const total=Math.max(0,subtotal-discountAmount+shippingAmount+taxAmount);
+      const total=Number(checkout.total??Math.max(0,subtotal-discountAmount+shippingAmount+taxAmount));
 
       const orderResult=await client.query<any>(
         "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code) values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,'online_store',$10,$11::jsonb,$12::jsonb,$13,'cod','unfulfilled',$14,$15,$16,$17) returning *",
@@ -254,6 +258,9 @@ export class CheckoutService{
         await client.query("insert into order_items(order_id,product_id,variant_id,sku,title,selected_options,quantity,unit_price,line_total) values($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)",[order.id,entry.variant.product_id,entry.variant.id,entry.variant.sku,entry.variant.title,JSON.stringify(entry.line.selected_options||{}),Number(entry.line.quantity),entry.price,entry.price*Number(entry.line.quantity)]);
         await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,entry.variant.id]);
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_sale',$4,$5,$6,$7,'checkout')",[store.id,entry.variant.id,order.id,-Number(entry.line.quantity),before,after,"Order "+orderNumber]);
+        if(after<=3){
+          await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'low_stock','warning',$2,$3,'variant',$4)",[store.id,"Low stock: "+entry.variant.sku,entry.variant.sku+" has "+after+" unit(s) remaining",entry.variant.id]);
+        }
       }
 
       if(checkout.discount_code){
@@ -264,6 +271,8 @@ export class CheckoutService{
         }
       }
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift),discountCode:checkout.discount_code||null})]);
+      await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[store.id,"New order "+orderNumber,"New storefront order for "+order.currency+" "+Number(order.total).toLocaleString(),order.id]);
+      await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','order_confirmation',$2,$3,$4::jsonb,'queued')",[store.id,email,"Order "+orderNumber+" confirmation",JSON.stringify({orderId:order.id,orderNumber,total:Number(order.total),currency:order.currency,name:checkout.customer_name})]);
       await client.query("update checkout_sessions set status='completed',subtotal=$1,completed_order_id=$2,updated_at=now() where id=$3",[subtotal,order.id,id]);
 
       return {ok:true,idempotent:false,order:{id:order.id,orderNumber:order.order_number,status:order.status,paymentStatus:order.payment_status,fulfillmentStatus:order.fulfillment_status,total:Number(order.total),currency:order.currency}};
