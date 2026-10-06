@@ -20,9 +20,17 @@ export default function NewProductPage(){
           <label className="field"><span>Status</span><select name="status" defaultValue="draft"><option value="draft">Draft</option><option value="active">Active</option></select></label>
           <label className="field"><span>Category</span><input name="category" placeholder="Rings"/></label>
           <label className="field"><span>Material</span><input name="material" placeholder="18K Gold · Diamond"/></label>
-          <label className="field"><span>Tag</span><input name="tag" placeholder="Heirloom"/></label>
+          <label className="field"><span>Legacy badge/tag</span><input name="tag" placeholder="Heirloom"/></label>
+          <label className="field"><span>Product type</span><input name="productType" placeholder="Ring"/></label>
+          <label className="field"><span>Vendor / brand</span><input name="vendor" placeholder="Jewelry Store"/></label>
+          <label className="field"><span>Tags</span><input name="tags" placeholder="bridal, diamond, heirloom"/></label>
+          <label className="field"><span>Publish at</span><input name="publishedAt" type="datetime-local"/></label>
+          <label className="field"><span>Product weight (g)</span><input name="weightGrams" type="number" min="0"/></label>
+          <label className="field"><span>Taxable</span><input name="taxable" type="checkbox" defaultChecked/></label>
           <label className="field"><span>Starting price (PKR)</span><input name="price" type="number" min="0" defaultValue="0"/></label>
           <label className="field"><span>Opening stock</span><input name="inventory" type="number" min="0" defaultValue="0"/></label>
+          <label className="field"><span>Opening cost / unit</span><input name="costPrice" type="number" min="0"/></label>
+          <label className="field"><span>Variant weight (g)</span><input name="variantWeightGrams" type="number" min="0"/></label>
           <label className="field"><span>Featured</span><input name="featured" type="checkbox"/></label>
           <div className="field" style={{gridColumn:"1 / -1"}}><span>Description / story</span><RichTextEditor name="description"/></div>
         </div>
