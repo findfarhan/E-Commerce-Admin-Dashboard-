@@ -7,7 +7,7 @@ import {ProductVariantManager} from "@/components/product-variant-manager";
 import {getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
 import {
   adjustInventoryAction,archiveVariantAction,createMediaSetAction,createOptionAction,createVariantAction,
-  generateVariantsAction,saveProductSeoAction,updateVariantAction
+  archiveProductAction,deleteOptionAction,generateVariantsAction,saveProductSeoAction,updateOptionAction,updateVariantAction
 } from "../actions";
 
 export default async function ProductPage({params}:{params:Promise<{id:string}>}){
@@ -22,11 +22,13 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const addMediaSet=createMediaSetAction.bind(null,id);
   const generate=generateVariantsAction.bind(null,id);
   const saveSeo=saveProductSeoAction.bind(null,id,product.handle||"");
+  const archiveProduct=archiveProductAction.bind(null,id);
   const visualOptions=options.filter(option=>option.isVisual);
 
   return <>
     <PageHeader eyebrow="PRODUCT STUDIO" title={product.name} description="Canonical product, sellable variants, inventory, visual media rules, SEO and channel overlays.">
       <Link className="secondary-button" href={"/products/"+id+"/edit"}>Edit core</Link>
+      <form action={archiveProduct}><button className="secondary-button" type="submit">Archive product</button></form>
       <Link className="primary-button" href="/products">Catalog</Link>
     </PageHeader>
 
@@ -48,6 +50,29 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
       ? <ProductVariantManager options={options} variants={variants} mediaSets={mediaSets}/>
       : <article className="panel empty-panel"><div><h2>No product options configured</h2><p>This product is currently a single/default variant. Add visual or sizing options below when needed.</p></div></article>
     }
+
+    {options.length>0&&<article className="panel settings-panel" style={{marginTop:14}}>
+      <section className="settings-section">
+        <h2>Option definitions</h2>
+        <p>Edit labels and values here. A value already attached to a sellable variant cannot be deleted until those variants are changed or archived.</p>
+        <div className="seo-check-list">
+          {options.map((option,index)=>{
+            const update=updateOptionAction.bind(null,id,option.id);
+            const remove=deleteOptionAction.bind(null,id,option.id);
+            return <div key={option.id} style={{display:"grid",gap:10,padding:"16px 0"}}>
+              <form action={update} className="field-grid">
+                <label className="field"><span>Option name</span><input name="name" required defaultValue={option.name}/></label>
+                <label className="field"><span>Values</span><input name="values" required defaultValue={option.values.map(value=>value.value).join(", ")}/></label>
+                <label className="field"><span>Position</span><input name="position" type="number" min="0" defaultValue={index}/></label>
+                <label className="field"><span>Visual option</span><input name="isVisual" type="checkbox" defaultChecked={option.isVisual}/></label>
+                <div className="page-actions"><button className="secondary-button" type="submit">Save option</button></div>
+              </form>
+              <form action={remove}><button className="secondary-button" type="submit">Delete option</button></form>
+            </div>;
+          })}
+        </div>
+      </section>
+    </article>}
 
     <section className="settings-grid" style={{marginTop:14}}>
       <article className="panel settings-panel">
@@ -107,9 +132,9 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
               <form action={update} className="field-grid">
                 <label className="field"><span>SKU</span><input name="sku" defaultValue={variant.sku}/></label>
                 <label className="field"><span>Price</span><input name="price" type="number" min="0" defaultValue={variant.price}/></label>
-                <label className="field"><span>Current stock</span><input name="inventory" type="number" min="0" defaultValue={variant.inventory}/></label>
+                <label className="field"><span>Current stock</span><input type="number" value={variant.inventory} readOnly aria-readonly="true"/></label>
                 <label className="field"><span>Status</span><select name="status" defaultValue={variant.status}><option value="active">Active</option><option value="draft">Draft</option></select></label>
-                <label className="field"><span>Media set</span><select name="mediaSetId" defaultValue=""><option value="">None / auto</option>{mediaSets.map(set=><option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
+                <label className="field"><span>Media set</span><select name="mediaSetId" defaultValue={variant.mediaSetId||""}><option value="">None / auto</option>{mediaSets.map(set=><option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
                 <div className="page-actions"><button className="secondary-button" type="submit">Save variant</button></div>
               </form>
               <form action={adjust} className="field-grid">

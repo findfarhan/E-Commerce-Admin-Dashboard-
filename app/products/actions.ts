@@ -101,7 +101,6 @@ export async function createVariantAction(id:string,formData:FormData){
       sku:String(formData.get("sku")||"").trim(),
       price:Number(formData.get("price")||0),
       compareAtPrice:formData.get("compareAtPrice")?Number(formData.get("compareAtPrice")):null,
-      inventory:Number(formData.get("inventory")||0),
       status:String(formData.get("status")||"active"),
       mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
       selectedOptions,
@@ -192,4 +191,30 @@ export async function saveProductSeoAction(productId:string,handle:string,formDa
     }),
   });
   revalidatePath("/products/"+productId);
+}
+
+
+export async function updateOptionAction(productId:string,optionId:string,formData:FormData){
+  const values=String(formData.get("values")||"").split(",").map(value=>value.trim()).filter(Boolean);
+  await request("/v1/admin/products/"+encodeURIComponent(productId)+"/options/"+encodeURIComponent(optionId),{
+    method:"PATCH",
+    body:JSON.stringify({
+      name:String(formData.get("name")||"").trim(),
+      values,
+      isVisual:formData.get("isVisual")==="on",
+      position:Number(formData.get("position")||0),
+    }),
+  });
+  revalidatePath("/products/"+productId);
+}
+
+export async function deleteOptionAction(productId:string,optionId:string){
+  await request("/v1/admin/products/"+encodeURIComponent(productId)+"/options/"+encodeURIComponent(optionId),{method:"DELETE"});
+  revalidatePath("/products/"+productId);
+}
+
+export async function archiveProductAction(productId:string){
+  await request("/v1/admin/products/"+encodeURIComponent(productId),{method:"DELETE"});
+  revalidatePath("/products");
+  redirect("/products");
 }

@@ -293,11 +293,10 @@ export class ProductsService{
     const sku=body?.sku!==undefined?String(body.sku).trim():current.sku;
     const price=body?.price!==undefined?Number(body.price):Number(current.price);
     const compareAt=body?.compareAtPrice!==undefined?(body.compareAtPrice===null?null:Number(body.compareAtPrice)):current.compare_at_price;
-    const inventory=body?.inventory!==undefined?Number(body.inventory):Number(current.inventory);
     const status=body?.status!==undefined?String(body.status):current.status;
     const mediaSetId=body?.mediaSetId!==undefined?(body.mediaSetId||null):current.media_set_id;
-    if(!sku||price<0||inventory<0) throw new BadRequestException("Invalid variant values");
-    await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,inventory=$4,status=$5,media_set_id=$6,updated_at=now() where id=$7",[sku,price,compareAt,inventory,status,mediaSetId,variantId]);
+    if(!sku||price<0) throw new BadRequestException("Invalid variant values");
+    await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,status=$4,media_set_id=$5,updated_at=now() where id=$6",[sku,price,compareAt,status,mediaSetId,variantId]);
     return this.getAdminDetail(productId);
   }
 

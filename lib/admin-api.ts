@@ -63,7 +63,7 @@ export async function getAdminProductDetail(id:string){
     const selectedOptions=v.selected_options||{};
     return {
       id:v.id,productId:v.product_id,sku:v.sku,title:v.title||Object.values(selectedOptions).join(" / "),
-      price:Number(v.price||0),inventory:Number(v.inventory||0),selectedOptions,status:v.status==="draft"?"draft":"active",
+      price:Number(v.price||0),inventory:Number(v.inventory||0),selectedOptions,status:v.status==="draft"?"draft":"active",mediaSetId:v.media_set_id||null,
     };
   });
 
