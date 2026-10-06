@@ -1,17 +1,25 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
+import {OrderEditor} from "@/components/order-editor";
 import {StatusPill} from "@/components/status-pill";
-import {getAdminOrderDetail} from "@/lib/admin-api";
+import {adminRequest,getAdminOrderDetail} from "@/lib/admin-api";
+import {editEnterpriseOrderAction} from "@/app/enterprise-actions";
 import {cancelOrderAction,returnOrderAction,updateOrderAction} from "../actions";
 
 const money=(value:any)=>"Rs. "+Number(value||0).toLocaleString("en-PK");
 
 export default async function OrderDetailPage({params}:{params:Promise<{id:string}>}){
   const {id}=await params;
-  const detail=await getAdminOrderDetail(id);
+  const [detail,catalog,locations,shipping]=await Promise.all([
+    getAdminOrderDetail(id),
+    adminRequest<any>("/v1/admin/order-catalog",0),
+    adminRequest<any>("/v1/admin/locations",0),
+    adminRequest<any>("/v1/admin/shipping",0),
+  ]);
   if(!detail) notFound();
   const order=detail.order;
+  const edit=editEnterpriseOrderAction.bind(null,id);
   const update=updateOrderAction.bind(null,id);
   const cancel=cancelOrderAction.bind(null,id);
   const returnOrder=returnOrderAction.bind(null,id);
@@ -52,13 +60,17 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
       </article>
     </section>
 
+    {order.status!=="canceled"&&order.fulfillment_status!=="fulfilled"&&order.fulfillment_status!=="returned"&&
+      <OrderEditor action={edit} catalog={catalog?.items||[]} initialItems={detail.items||[]} locations={locations?.items||[]} shippingRates={shipping?.rates||[]} order={order}/>
+    }
+
     <section className="dashboard-grid lower">
       <form action={update} className="panel settings-panel">
         <section className="settings-section">
           <h2>Operational state</h2>
           <div className="field-grid">
             <label className="field"><span>Order status</span><select name="status" defaultValue={order.status}><option>confirmed</option><option>processing</option><option>completed</option></select></label>
-            <label className="field"><span>Payment status</span><select name="paymentStatus" defaultValue={order.payment_status}><option>pending</option><option>paid</option><option>refunded</option><option>failed</option></select></label>
+            <label className="field"><span>Payment status</span><select name="paymentStatus" defaultValue={order.payment_status}><option>pending</option><option>partially_paid</option><option>paid</option><option>partially_refunded</option><option>refunded</option><option>failed</option></select></label>
             <label className="field"><span>Fulfillment</span><select name="fulfillmentStatus" defaultValue={order.fulfillment_status}><option>unfulfilled</option><option>processing</option><option>fulfilled</option><option>returned</option></select></label>
             <label className="field"><span>Tracking carrier</span><input name="trackingCarrier" defaultValue={order.tracking_carrier||""} placeholder="TCS, DHL, Leopards..."/></label>
             <label className="field"><span>Tracking number</span><input name="trackingNumber" defaultValue={order.tracking_number||""}/></label>
@@ -74,7 +86,7 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
         <div className="panel-head"><div><span>TIMELINE</span><h2>Order events</h2></div></div>
         <div className="activity-list">{(detail.events||[]).map((event:any)=><div className="activity-item" key={event.id}><span>•</span><div><b>{event.event_type}</b><p>{event.message}</p></div><time>{new Date(event.created_at).toLocaleString("en-PK")}</time></div>)}</div>
         {order.status!=="canceled"&&order.fulfillment_status!=="fulfilled"&&<form action={cancel} style={{marginTop:20}}><label className="field"><span>Cancellation reason</span><input name="reason" placeholder="Customer request, duplicate order..."/></label><button className="secondary-button" type="submit">Cancel & restore inventory</button></form>}
-        {order.fulfillment_status==="fulfilled"&&<form action={returnOrder} style={{marginTop:20}}><label className="field"><span>Return reason</span><input name="reason" placeholder="Returned by customer, damaged in transit..."/></label><button className="secondary-button" type="submit">Mark returned & restock</button></form>}
+        {order.fulfillment_status==="fulfilled"&&<div style={{marginTop:20,display:"flex",gap:10,alignItems:"center"}}><Link className="primary-button" href={"/returns/new?orderId="+id}>Create partial return / exchange</Link><form action={returnOrder}><input type="hidden" name="reason" value="Full legacy return"/><button className="secondary-button" type="submit">Quick full return</button></form></div>}
       </article>
     </section>
   </>;
