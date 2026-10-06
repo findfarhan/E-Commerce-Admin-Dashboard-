@@ -20,7 +20,8 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const addMediaSet=createMediaSetAction.bind(null,id);
   const generate=generateVariantsAction.bind(null,id);
   const saveSeo=saveProductSeoAction.bind(null,id,product.handle||"");
-  const archiveProduct=archiveProductAction.bind(null,id);\n  const duplicateProduct=duplicateProductAction.bind(null,id);
+  const archiveProduct=archiveProductAction.bind(null,id);
+  const duplicateProduct=duplicateProductAction.bind(null,id);
   const visualOptions=options.filter(option=>option.isVisual);
 
   return <>
