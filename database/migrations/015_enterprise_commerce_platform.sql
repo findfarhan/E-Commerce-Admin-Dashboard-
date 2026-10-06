@@ -435,9 +435,10 @@ create table if not exists admin_users (
   status text not null default 'active' check(status in ('invited','active','suspended')),
   last_seen_at timestamptz,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique(store_id,lower(email))
+  updated_at timestamptz not null default now()
 );
+
+create unique index if not exists admin_users_store_email_unique on admin_users(store_id,lower(email));
 
 create table if not exists notifications (
   id uuid primary key default gen_random_uuid(),
