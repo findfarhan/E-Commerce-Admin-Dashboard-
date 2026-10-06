@@ -39,10 +39,12 @@ export class PricingEngineService{
     const totalWeight=lines.reduce((sum,line)=>sum+(Number(line.weightGrams||0)*Number(line.quantity||0)),0);
     const discount=await this.discount(storeId,lines,subtotal,options.discountCode||null,options.customerId||null,q);
     const shipping=await this.shipping(storeId,options.shippingAddress||{},subtotal-discount.amount,totalWeight,options.shippingRateId||null,q);
-    const taxableBase=this.money(Math.max(0,lines.filter(line=>line.taxable!==false).reduce((sum,line)=>sum+Number(line.lineTotal||0),0)-discount.taxableDiscountShare));
+    const taxableGross=this.money(lines.filter(line=>line.taxable!==false).reduce((sum,line)=>sum+Number(line.lineTotal||0),0));
+    const taxableDiscountShare=subtotal>0?this.money(discount.amount*(taxableGross/subtotal)):0;
+    const taxableBase=this.money(Math.max(0,taxableGross-taxableDiscountShare));
     const tax=await this.tax(storeId,options.shippingAddress||{},lines,taxableBase,q);
     const total=this.money(Math.max(0,subtotal-discount.amount+shipping.amount+tax.amount));
-    return {subtotal,discount,shipping,tax,total,totalWeight};
+    return {subtotal,discount:{...discount,taxableDiscountShare},shipping,tax,total,totalWeight};
   }
 
   private money(value:number){return Math.round((Number(value)||0)*100)/100;}
