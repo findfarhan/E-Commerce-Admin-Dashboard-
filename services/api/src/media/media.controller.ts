@@ -6,6 +6,9 @@ import {MediaService} from "./media.service";
 @UseGuards(AdminKeyGuard)
 export class MediaController{
   constructor(private readonly media:MediaService){}
+  @Post("products/:productId/media/source")
+  source(@Param("productId") productId:string,@Body() body:any){return this.media.createSource(productId,body);}
+
   @Post("products/:productId/media/upload-url")
   upload(@Param("productId") productId:string,@Body() body:any){return this.media.createUpload(productId,body);}
   @Post("media/:mediaId/finalize")
