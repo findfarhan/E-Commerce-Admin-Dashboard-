@@ -141,15 +141,11 @@ export class CheckoutService{
       }
 
       const email=String(checkout.customer_email).toLowerCase();
-      const existingCustomer=await client.query<any>("select id,name,email,phone from customers where store_id=$1 and lower(email)=$2 limit 1 for update",[store.id,email]);
-      let customer:any;
-      if(existingCustomer.rowCount){
-        const updatedCustomer=await client.query<any>("update customers set name=$1,phone=$2 where id=$3 returning id,name,email,phone",[checkout.customer_name,checkout.customer_phone,existingCustomer.rows[0].id]);
-        customer=updatedCustomer.rows[0];
-      }else{
-        const insertedCustomer=await client.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) returning id,name,email,phone",[store.id,email,checkout.customer_name,checkout.customer_phone]);
-        customer=insertedCustomer.rows[0];
-      }
+      const customerResult=await client.query<any>(
+        "insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=excluded.name,phone=excluded.phone returning id,name,email,phone",
+        [store.id,email,checkout.customer_name,checkout.customer_phone]
+      );
+      const customer=customerResult.rows[0];
 
       const numberResult=await client.query<{value:string}>("select 'JS-'||lpad(nextval('jewelry_order_number_seq')::text,6,'0') as value");
       const orderNumber=numberResult.rows[0].value;
