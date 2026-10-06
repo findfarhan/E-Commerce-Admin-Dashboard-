@@ -90,7 +90,7 @@ export class StorefrontService{
 
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
     const result=await this.db.query<any>(
-      "select o.id,o.order_number,o.status,o.payment_status,o.fulfillment_status,o.currency,o.total,o.shipping_method,o.created_at,c.email,c.phone from orders o join stores s on s.id=o.store_id left join customers c on c.id=o.customer_id where s.domain=$1 and upper(o.order_number)=$2 and lower(coalesce(c.email,''))=$3 limit 1",
+      "select o.id,o.order_number,o.status,o.payment_status,o.fulfillment_status,o.currency,o.total,o.shipping_method,o.tracking_carrier,o.tracking_number,o.tracking_url,o.fulfilled_at,o.created_at,c.email,c.phone from orders o join stores s on s.id=o.store_id left join customers c on c.id=o.customer_id where s.domain=$1 and upper(o.order_number)=$2 and lower(coalesce(c.email,''))=$3 limit 1",
       [domain,number,email]
     );
 
@@ -112,6 +112,12 @@ export class StorefrontService{
       currency:order.currency,
       total:Number(order.total||0),
       shippingMethod:order.shipping_method,
+      fulfilledAt:order.fulfilled_at,
+      tracking:order.tracking_number||order.tracking_url?{
+        carrier:order.tracking_carrier||null,
+        number:order.tracking_number||null,
+        url:order.tracking_url||null,
+      }:null,
       createdAt:order.created_at,
       items:items.rows.map((item:any)=>({
         title:item.title,
