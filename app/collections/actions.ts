@@ -33,12 +33,14 @@ export async function updateCollectionAction(id:string,formData:FormData){
       position:Number(formData.get("position")||0),
     }),
   });
-  const productIds=formData.getAll("productIds").map(String);
-  const orderedProductIds=productIds
-    .map((productId,index)=>({productId,position:Number(formData.get("position__"+productId)??index)}))
-    .sort((a,b)=>a.position-b.position)
-    .map(item=>item.productId);
-  await adminMutation("/v1/admin/collections/"+id+"/products",{method:"PUT",body:JSON.stringify({productIds:orderedProductIds})});
+  if(String(formData.get("collectionType")||"manual")==="manual"){
+    const productIds=formData.getAll("productIds").map(String);
+    const orderedProductIds=productIds
+      .map((productId,index)=>({productId,position:Number(formData.get("position__"+productId)??index)}))
+      .sort((a,b)=>a.position-b.position)
+      .map(item=>item.productId);
+    await adminMutation("/v1/admin/collections/"+id+"/products",{method:"PUT",body:JSON.stringify({productIds:orderedProductIds})},"catalog.write");
+  }
   revalidatePath("/collections");
   revalidatePath("/collections/"+id);
 }
@@ -57,4 +59,20 @@ export async function saveCollectionSeoAction(id:string,handle:string,formData:F
     }),
   });
   revalidatePath("/collections/"+id);
+}
+
+export async function saveCollectionRulesAction(id:string,formData:FormData){
+  const raw=String(formData.get("rulesJson")||"[]");
+  let rules:any[]=[];
+  try{rules=JSON.parse(raw);}catch{throw new Error("Invalid smart collection rules");}
+  await adminMutation("/v1/admin/collections/"+id+"/rules",{method:"PUT",body:JSON.stringify({mode:String(formData.get("mode")||"manual"),rules})},"catalog.write");
+  revalidatePath("/collections");revalidatePath("/collections/"+id);
+}
+export async function refreshSmartCollectionAction(id:string){
+  await adminMutation("/v1/admin/collections/"+id+"/refresh",{method:"POST",body:"{}"},"catalog.write");
+  revalidatePath("/collections");revalidatePath("/collections/"+id);
+}
+export async function saveCollectionScheduleAction(id:string,formData:FormData){
+  await adminMutation("/v1/admin/collections/"+id+"/schedule",{method:"PATCH",body:JSON.stringify({publishAt:String(formData.get("publishAt")||"")||null,unpublishAt:String(formData.get("unpublishAt")||"")||null})},"catalog.write");
+  revalidatePath("/collections");revalidatePath("/collections/"+id);
 }
