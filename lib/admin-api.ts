@@ -25,8 +25,9 @@ export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>
   }
 }
 
-export async function getAdminProducts():Promise<Product[]>{
-  const response=await adminRequest<{items:any[]}>("/v1/admin/products");
+export async function getAdminProducts(filters:Record<string,string|undefined|null>={}):Promise<Product[]>{
+  const query=new URLSearchParams();for(const [key,value] of Object.entries(filters)){if(value)query.set(key,value);}
+  const response=await adminRequest<{items:any[]}>("/v1/admin/products"+(query.size?"?"+query.toString():""));
   if(!response) return [];
   return response.items.map((p:any)=>({
     id:p.id,storeId:p.store_id,sku:p.primary_sku||"—",name:p.title,
