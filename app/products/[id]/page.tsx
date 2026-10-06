@@ -1,11 +1,13 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
+import {ManagedMediaUpload} from "@/components/managed-media-upload";
 import {ProductVariantManager} from "@/components/product-variant-manager";
-import {getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
+import {adminRequest,getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
 import {
-  adjustInventoryAction,archiveVariantAction,createMediaSetAction,createOptionAction,createVariantAction,
-  archiveProductAction,deleteOptionAction,duplicateProductAction,generateVariantsAction,saveProductSeoAction,updateOptionAction,updateVariantAction
+  adjustInventoryAction,archiveVariantAction,createMediaSetAction,createOptionAction,createSourceMediaAction,createVariantAction,
+  archiveProductAction,deleteMediaAction,deleteOptionAction,duplicateProductAction,generateVariantsAction,saveProductMetafieldsAction,
+  saveProductSeoAction,saveVariantCostAction,updateMediaAction,updateOptionAction,updateVariantAction
 } from "../actions";
 
 export default async function ProductPage({params}:{params:Promise<{id:string}>}){
@@ -13,8 +15,14 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const detail=await getAdminProductDetail(id);
   if(!detail) notFound();
 
-  const {product,options,variants,mediaSets}=detail;
-  const seo=await getAdminSeo("product",id);
+  const {product,options,mediaSets}=detail;
+  const variants:any[]=detail.variants as any[];
+  const media:any[]=(detail.media||[]) as any[];
+  const [seo,metafieldResponse]=await Promise.all([
+    getAdminSeo("product",id),
+    adminRequest<any>("/v1/admin/metafields/product/"+encodeURIComponent(id),0),
+  ]);
+  const metafields:any[]=metafieldResponse?.items||[];
   const addOption=createOptionAction.bind(null,id);
   const addVariant=createVariantAction.bind(null,id);
   const addMediaSet=createMediaSetAction.bind(null,id);
@@ -22,6 +30,8 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const saveSeo=saveProductSeoAction.bind(null,id,product.handle||"");
   const archiveProduct=archiveProductAction.bind(null,id);
   const duplicateProduct=duplicateProductAction.bind(null,id);
+  const saveMetafields=saveProductMetafieldsAction.bind(null,id);
+  const addSourceMedia=createSourceMediaAction.bind(null,id);
   const visualOptions=options.filter(option=>option.isVisual);
 
   return <>
@@ -45,6 +55,43 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
         <div><span>STOCK</span><b>{product.inventory}</b></div>
       </div>
     </article>
+
+    <section className="enterprise-grid two" style={{marginTop:14}}>
+      <article className="panel enterprise-card">
+        <h3>Catalog organization</h3>
+        <div className="metric-row"><span>Vendor / brand</span><b>{product.vendor||"—"}</b></div>
+        <div className="metric-row"><span>Product type</span><b>{product.productType||"—"}</b></div>
+        <div className="metric-row"><span>Tags</span><b>{(product.tags||[]).join(", ")||"—"}</b></div>
+        <div className="metric-row"><span>Taxable</span><b>{product.taxable!==false?"Yes":"No"}</b></div>
+        <div className="metric-row"><span>Weight</span><b>{product.weightGrams!==null&&product.weightGrams!==undefined?product.weightGrams+" g":"—"}</b></div>
+        <div className="metric-row"><span>Publish schedule</span><b>{product.publishedAt?new Date(product.publishedAt).toLocaleString("en-PK"):"Immediate"}</b></div>
+      </article>
+      <form action={saveMetafields} className="panel enterprise-card">
+        <h3>Jewelry metafields</h3>
+        <p>Typed custom data is shared with search, filters, channels and storefront product detail.</p>
+        <div className="field-grid" style={{marginTop:16}}>
+          {metafields.map((field:any)=>{
+            const name="mf__"+field.id;
+            const raw=field.value;
+            const value=raw===null||raw===undefined?"":typeof raw==="string"?raw:typeof raw==="object"?JSON.stringify(raw):String(raw);
+            const allowed=Array.isArray(field.validation?.allowedValues)?field.validation.allowedValues:[];
+            return <label className="field" key={field.id}>
+              <input type="hidden" name={"mftype__"+field.id} value={field.value_type}/>
+              <span>{field.name}<small style={{marginLeft:6}}>{field.namespace+"."+field.key}</small></span>
+              {field.value_type==="boolean"
+                ?<input name={name} type="checkbox" defaultChecked={Boolean(raw)}/>
+                :allowed.length
+                  ?<select name={name} defaultValue={value}><option value="">Not set</option>{allowed.map((option:string)=><option value={option} key={option}>{option}</option>)}</select>
+                  :field.value_type==="multiline_text"||field.value_type==="json"
+                    ?<textarea name={name} rows={3} defaultValue={value}/>
+                    :<input name={name} type={field.value_type.startsWith("number")?"number":field.value_type==="date"?"date":field.value_type==="datetime"?"datetime-local":field.value_type==="url"?"url":"text"} step={field.value_type==="number_decimal"?"any":undefined} defaultValue={value}/>
+              }
+            </label>;
+          })}
+        </div>
+        <div className="page-actions"><button className="primary-button" type="submit">Save metafields</button></div>
+      </form>
+    </section>
 
     {options.length
       ? <ProductVariantManager options={options} variants={variants} mediaSets={mediaSets}/>
@@ -142,6 +189,11 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
                 <label className="field"><span>Reason</span><input name="reason" required placeholder="Stock received / damaged / correction"/></label>
                 <div className="page-actions"><button className="secondary-button" type="submit">Adjust stock</button></div>
               </form>
+              <form action={saveVariantCostAction.bind(null,id,variant.id)} className="field-grid">
+                <label className="field"><span>Unit cost / COGS</span><input name="costAmount" type="number" min="0" step=".01" defaultValue={variant.costAmount||0}/></label>
+                <label className="field"><span>Variant weight (g)</span><input name="weightGrams" type="number" min="0" step=".001" defaultValue={variant.weightGrams??""}/></label>
+                <div className="page-actions"><button className="secondary-button" type="submit">Save cost & weight</button></div>
+              </form>
               <form action={archive}><button className="secondary-button" type="submit">Archive variant</button></form>
             </div>;
           })}
@@ -161,6 +213,51 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
         </form>
       </section>
     </article>}
+
+
+    <article className="panel settings-panel" style={{marginTop:14}}>
+      <section className="settings-section">
+        <h2>Media library</h2>
+        <p>Upload a single master directly to managed object storage when Cloudflare R2 is configured, or attach an HTTPS source image. Alt text, focal point, role, ordering and variant media-set assignment remain editable.</p>
+        <div className="settings-grid">
+          <div>
+            <h3>Managed master upload</h3>
+            <ManagedMediaUpload productId={id} mediaSets={mediaSets}/>
+          </div>
+          <form action={addSourceMedia} className="field-grid">
+            <label className="field" style={{gridColumn:"1 / -1"}}><span>HTTPS source image</span><input name="sourceUrl" type="url" placeholder="https://..." required/></label>
+            <label className="field"><span>Alt text</span><input name="altText"/></label>
+            <label className="field"><span>Role</span><select name="role"><option value="gallery">Gallery</option><option value="primary">Primary</option></select></label>
+            <label className="field"><span>Position</span><input name="position" type="number" min="0" defaultValue={media.length}/></label>
+            <label className="field"><span>Media set</span><select name="mediaSetId"><option value="">None / default</option>{mediaSets.map(set=><option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
+            <button className="secondary-button" type="submit">Attach source image</button>
+          </form>
+        </div>
+        <div className="seo-check-list" style={{marginTop:18}}>
+          {media.map((item:any)=>{
+            const update=updateMediaAction.bind(null,id,item.id);
+            const remove=deleteMediaAction.bind(null,id,item.id);
+            const imageUrl=item.responsive?.card_desktop||item.url||item.sourceUrl;
+            return <div key={item.id} style={{display:"grid",gridTemplateColumns:"96px 1fr",gap:16,padding:"16px 0"}}>
+              <div style={{width:96,height:96,borderRadius:12,overflow:"hidden",background:"var(--surface-2)"}}>{imageUrl&&<img src={imageUrl} alt={item.altText||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div>
+              <div style={{display:"grid",gap:10}}>
+                <form action={update} className="field-grid">
+                  <label className="field"><span>Alt text</span><input name="altText" defaultValue={item.altText||""}/></label>
+                  <label className="field"><span>Role</span><select name="role" defaultValue={item.role||"gallery"}><option value="primary">Primary</option><option value="gallery">Gallery</option></select></label>
+                  <label className="field"><span>Position</span><input name="position" type="number" min="0" defaultValue={item.position||0}/></label>
+                  <label className="field"><span>Media set</span><select name="mediaSetId" defaultValue={item.mediaSetId||""}><option value="">None</option>{mediaSets.map(set=><option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
+                  <label className="field"><span>Focal X</span><input name="focalX" type="number" min="0" max="1" step=".01" defaultValue={item.focalX??.5}/></label>
+                  <label className="field"><span>Focal Y</span><input name="focalY" type="number" min="0" max="1" step=".01" defaultValue={item.focalY??.5}/></label>
+                  <button className="secondary-button" type="submit">Save media</button>
+                </form>
+                <form action={remove}><button className="secondary-button" type="submit">Delete media</button></form>
+              </div>
+            </div>;
+          })}
+          {!media.length&&<p>No media attached yet.</p>}
+        </div>
+      </section>
+    </article>
 
     <article className="panel settings-panel" style={{marginTop:14}}>
       <section className="settings-section">
