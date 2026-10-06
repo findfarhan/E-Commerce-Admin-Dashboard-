@@ -87,6 +87,7 @@ export class CheckoutService{
     if(!email||!email.includes("@")) throw new BadRequestException("A valid email is required");
     if(!name) throw new BadRequestException("Customer name is required");
     if(!phone) throw new BadRequestException("Phone is required");
+    if(body?.termsAccepted!==true) throw new BadRequestException("Terms and privacy acceptance is required");
 
     const shipping=this.cleanAddress(body?.shippingAddress);
     if(!shipping.line1||!shipping.city||!shipping.country) throw new BadRequestException("Shipping address is incomplete");
@@ -100,7 +101,7 @@ export class CheckoutService{
     const giftMessage=isGift?String(body?.giftMessage||"").trim().slice(0,500):null;
 
     const result=await this.db.query<any>(
-      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,updated_at=now() where id=$11 and store_id=$12 and status='open' and expires_at>now() returning id,status,currency,subtotal,shipping_amount,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,expires_at",
+      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,terms_accepted_at=now(),updated_at=now() where id=$11 and store_id=$12 and status='open' and expires_at>now() returning id,status,currency,subtotal,shipping_amount,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,terms_accepted_at,expires_at",
       [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,id,store.id]
     );
 
@@ -125,6 +126,7 @@ export class CheckoutService{
       if(new Date(checkout.expires_at).getTime()<Date.now()) throw new ConflictException("Checkout has expired");
       if(!checkout.customer_email||!checkout.customer_name||!checkout.customer_phone) throw new BadRequestException("Customer details are required");
       if(!checkout.shipping_address?.line1||!checkout.shipping_address?.city) throw new BadRequestException("Shipping address is required");
+      if(!checkout.terms_accepted_at) throw new BadRequestException("Terms acceptance is required");
       if(checkout.payment_method!=="cod") throw new BadRequestException("Payment provider is not connected");
 
       const prior=await client.query<any>("select id,order_number,status,payment_status,fulfillment_status,total from orders where store_id=$1 and external_id=$2 limit 1",[store.id,"checkout:"+id+":"+idempotencyKey]);
@@ -171,8 +173,8 @@ export class CheckoutService{
       const total=subtotal+Number(checkout.shipping_amount||0);
 
       const orderResult=await client.query<any>(
-        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,total,source_channel,external_id,shipping_address,billing_address,shipping_method,shipping_amount,payment_method,fulfillment_status,is_gift,gift_message) values($1,$2,$3,'confirmed','pending',$4,$5,$6,'online_store',$7,$8::jsonb,$9::jsonb,$10,$11,'cod','unfulfilled',$12,$13) returning *",
-        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Number(checkout.shipping_amount||0),Boolean(checkout.is_gift),checkout.gift_message||null]
+        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,total,source_channel,external_id,shipping_address,billing_address,shipping_method,shipping_amount,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at) values($1,$2,$3,'confirmed','pending',$4,$5,$6,'online_store',$7,$8::jsonb,$9::jsonb,$10,$11,'cod','unfulfilled',$12,$13,$14) returning *",
+        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Number(checkout.shipping_amount||0),Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at]
       );
       const order=orderResult.rows[0];
 
