@@ -104,7 +104,7 @@ export class CommerceService{
 
   private async resolveDiscount(client:any,storeId:string,code:any,subtotal:number){
     if(!code) return {amount:0,row:null};
-    const r=await client.query<any>("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1",[storeId,String(code).toUpperCase()]);
+    const r=await client.query("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1",[storeId,String(code).toUpperCase()]);
     const d=r.rows[0];if(!d) throw new BadRequestException("Discount code is invalid or expired");if(d.minimum_order!==null&&subtotal<Number(d.minimum_order))throw new BadRequestException("Minimum order not met");if(d.usage_limit!==null&&Number(d.usage_count)>=Number(d.usage_limit))throw new BadRequestException("Discount usage limit reached");
     let amount=d.kind==="percentage"?subtotal*Math.min(100,Number(d.value))/100:d.kind==="fixed"?Number(d.value):0;amount=Math.min(subtotal,Math.max(0,amount));return {amount,row:d};
   }
