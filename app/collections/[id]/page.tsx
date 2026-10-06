@@ -27,14 +27,23 @@ export default async function CollectionDetailPage({params}:{params:Promise<{id:
           <label className="field"><span>Subtitle</span><input name="subtitle" defaultValue={collection.subtitle||""}/></label>
           <label className="field"><span>Status</span><select name="status" defaultValue={collection.status}><option value="active">Active</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
           <label className="field"><span>Position</span><input name="position" type="number" min="0" defaultValue={collection.position||0}/></label>
+          <label className="field"><span>Collection type</span><select name="collectionType" defaultValue={collection.collection_type||"manual"}><option value="manual">Manual / curated</option><option value="smart">Smart / rule-based</option></select></label>
+          <label className="field"><span>Rule matching</span><select name="matchType" defaultValue={collection.match_type||"all"}><option value="all">Match all rules</option><option value="any">Match any rule</option></select></label>
+          <label className="field"><span>Publish at</span><input name="publishAt" type="datetime-local" defaultValue={collection.publish_at?new Date(collection.publish_at).toISOString().slice(0,16):""}/></label>
+          <label className="field"><span>Unpublish at</span><input name="unpublishAt" type="datetime-local" defaultValue={collection.unpublish_at?new Date(collection.unpublish_at).toISOString().slice(0,16):""}/></label>
           <label className="field"><span>Hero image URL</span><input name="imageUrl" defaultValue={collection.image_url||""}/></label>
           <label className="field" style={{gridColumn:"1 / -1"}}><span>Description</span><textarea name="description" rows={5} defaultValue={collection.description||""}/></label>
+        </div>
+        <h3>Smart collection rules</h3>
+        <p>Rules are used only for Smart collections. Metafields use <code>metafield:custom.key</code>.</p>
+        <div className="seo-check-list">
+          {Array.from({length:5}).map((_,i)=>{const rule=(collection.rules||[])[i]||{};return <div className="field-grid" key={i}><label className="field"><span>Field</span><input name={"ruleField_"+i} defaultValue={rule.field||""} placeholder="category"/></label><label className="field"><span>Operator</span><select name={"ruleOperator_"+i} defaultValue={rule.operator||"equals"}><option value="equals">Equals</option><option value="not_equals">Not equals</option><option value="contains">Contains</option></select></label><label className="field"><span>Value</span><input name={"ruleValue_"+i} defaultValue={rule.value||""}/></label></div>})}
         </div>
       </section>
 
       <section className="settings-section">
-        <h2>Products</h2>
-        <p>Select the products that belong to this curated collection and control their storefront order with the position field.</p>
+        <h2>{collection.collection_type==="smart"?"Current smart matches":"Products"}</h2>
+        <p>{collection.collection_type==="smart"?"These products currently match the rules. Switch to Manual to curate exact membership.":"Select products and control exact storefront order with position."}</p>
         <div className="seo-check-list">
           {products.map((product,index)=><label key={product.id} style={{display:"grid",gridTemplateColumns:"auto 1fr 90px auto",gap:12,alignItems:"center"}}>
             <input type="checkbox" name="productIds" value={product.id} defaultChecked={selected.has(product.id)}/>
