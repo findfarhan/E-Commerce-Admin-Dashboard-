@@ -167,6 +167,19 @@ export class CatalogPlatformService{
   async setSmartCollectionRules(collectionId:string,body:any){
     const storeId=await this.context.storeId();
     const rules=Array.isArray(body?.rules)?body.rules:[];
+    const mode=String(body?.mode||"smart");
+    if(mode==="manual"){
+      await this.db.transaction(async client=>{
+        const collection=await client.query<any>("select id from collections where id=$1 and store_id=$2 for update",[collectionId,storeId]);
+        if(!collection.rowCount) throw new NotFoundException("Collection not found");
+        await client.query("delete from collection_rules where collection_id=$1",[collectionId]);
+        await client.query("update collections set collection_type='manual',updated_at=now() where id=$1",[collectionId]);
+      });
+      await this.governance.audit(storeId,"collection.mode.updated","collection",collectionId,{after:{mode:"manual"}});
+      return this.smartCollectionRules(collectionId);
+    }
+    if(mode!=="smart") throw new BadRequestException("Invalid collection mode");
+    if(!rules.length) throw new BadRequestException("Smart collections require at least one rule");
     const allowedFields=["category","material","vendor","product_type","status","featured","tag","tags","price","inventory"];
     const allowedOperators=["equals","not_equals","contains","in","gte","lte"];
     for(const rule of rules){
