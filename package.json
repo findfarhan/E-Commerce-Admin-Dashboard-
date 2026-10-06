@@ -1,8 +1,16 @@
 {
   "name":"jewelry-commerce-admin",
-  "version":"0.1.0",
+  "version":"0.2.0",
   "private":true,
-  "scripts":{"dev":"next dev","build":"next build","start":"next start"},
+  "scripts":{
+    "dev":"next dev",
+    "build":"node scripts/build.mjs",
+    "start":"node scripts/start.mjs",
+    "build:web":"next build",
+    "start:web":"next start",
+    "build:api":"npm --prefix services/api install --no-audit --no-fund && npm --prefix services/api run build",
+    "start:api":"node services/api/dist/main.js"
+  },
   "dependencies":{"next":"16.3.8","react":"19.3.0","react-dom":"19.3.0"},
   "devDependencies":{"@types/node":"^24.0.0","@types/react":"^19.0.0","@types/react-dom":"^19.0.0","typescript":"^5.9.0"}
 }
