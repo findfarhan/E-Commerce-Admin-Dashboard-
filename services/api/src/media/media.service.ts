@@ -126,6 +126,55 @@ export class MediaService{
     };
   }
 
+  async update(mediaId:string,body:any){
+    const current=await this.db.query<any>("select pm.*,p.store_id from product_media pm join products p on p.id=pm.product_id where pm.id=$1",[mediaId]);
+    if(!current.rowCount) throw new NotFoundException("Media not found");
+    const row=current.rows[0];
+    const role=body?.role!==undefined?String(body.role):row.role;
+    const position=body?.position!==undefined?Number(body.position):Number(row.position||0);
+    const focalX=body?.focalX!==undefined?Number(body.focalX):Number(row.focal_x??0.5);
+    const focalY=body?.focalY!==undefined?Number(body.focalY):Number(row.focal_y??0.5);
+    const altText=body?.altText!==undefined?(String(body.altText).trim()||null):row.alt_text;
+    const mediaSetId=body?.mediaSetId!==undefined?(body.mediaSetId||null):row.media_set_id;
+    if(!["primary","gallery"].includes(role)) throw new BadRequestException("Invalid media role");
+    if(!Number.isInteger(position)||position<0) throw new BadRequestException("Invalid media position");
+    if(focalX<0||focalX>1||focalY<0||focalY>1) throw new BadRequestException("Focal point must be between 0 and 1");
+    let sourceUrl=row.source_url;
+    if(body?.sourceUrl!==undefined){
+      const raw=String(body.sourceUrl||"").trim();
+      if(raw){
+        try{const u=new URL(raw);if(u.protocol!=="https:")throw new Error();sourceUrl=u.toString();}catch{throw new BadRequestException("Source URL must be HTTPS");}
+      }else sourceUrl=null;
+    }
+    return this.db.transaction(async client=>{
+      if(mediaSetId){
+        const set=await client.query("select id from product_media_sets where id=$1 and product_id=$2",[mediaSetId,row.product_id]);
+        if(!set.rowCount) throw new BadRequestException("Media set does not belong to product");
+      }
+      if(role==="primary") await client.query("update product_media set role='gallery' where product_id=$1 and id<>$2 and role='primary'",[row.product_id,mediaId]);
+      const r=await client.query<any>("update product_media set media_set_id=$1,source_url=$2,alt_text=$3,position=$4,role=$5,focal_x=$6,focal_y=$7 where id=$8 returning *",[mediaSetId,sourceUrl,altText,position,role,focalX,focalY,mediaId]);
+      if(row.master_object_key&&(focalX!==Number(row.focal_x)||focalY!==Number(row.focal_y))){
+        await client.query("delete from media_renditions where media_id=$1",[mediaId]);
+        await client.query("insert into jobs(store_id,kind,idempotency_key,payload,status) values($1,'image.renditions.generate',$2,$3::jsonb,'queued') on conflict(idempotency_key) do update set status='queued',available_at=now(),last_error=null",[row.store_id,"image-renditions:"+mediaId,JSON.stringify({mediaId})]);
+      }
+      return r.rows[0];
+    });
+  }
+
+  async delete(mediaId:string){
+    const r=await this.db.query<any>("select pm.*,p.store_id from product_media pm join products p on p.id=pm.product_id where pm.id=$1",[mediaId]);
+    if(!r.rowCount) throw new NotFoundException("Media not found");
+    const media=r.rows[0];
+    const renditions=await this.db.query<any>("select object_key from media_renditions where media_id=$1",[mediaId]);
+    const objectKeys=[media.master_object_key,...renditions.rows.map((x:any)=>x.object_key)].filter(Boolean);
+    if(objectKeys.length){
+      if(this.storage.provider!=="cloudflare-r2") throw new BadRequestException("R2 storage must be configured before deleting managed objects");
+      for(const key of objectKeys) await this.storage.delete(key);
+    }
+    await this.db.query("delete from product_media where id=$1",[mediaId]);
+    return {ok:true,id:mediaId};
+  }
+
   async renditions(mediaId:string){
     const mediaResult=await this.db.query<any>("select * from product_media where id=$1",[mediaId]);
     if(!mediaResult.rowCount) throw new NotFoundException("Media not found");
