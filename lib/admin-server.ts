@@ -7,8 +7,17 @@ export async function adminMutation<T=any>(path:string,init:RequestInit={},permi
   const session=permission?await requireAdminPermission(permission):await requireAdminSession();
   const adminKey=process.env.ADMIN_API_KEY;
   if(!adminKey) throw new Error("ADMIN_API_KEY is not configured on the Admin Vercel project.");
+  let body=init.body;
+  if(typeof body==="string"){
+    try{
+      const parsed=JSON.parse(body);
+      if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed)&&parsed.actor===undefined) parsed.actor=session.email;
+      body=JSON.stringify(parsed);
+    }catch{}
+  }
   const response=await fetch(apiBase+path,{
     ...init,
+    body,
     headers:{
       "Content-Type":"application/json",
       "X-Admin-Key":adminKey,
