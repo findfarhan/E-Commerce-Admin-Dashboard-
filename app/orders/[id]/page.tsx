@@ -19,7 +19,7 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
   return <>
     <PageHeader eyebrow="ORDER" title={order.order_number} description="Payment, fulfillment, customer, item and operational history in one record.">
       <Link className="secondary-button" href="/orders">Back to orders</Link>
-    </PageHeader>
+    <Link className="secondary-button" href={"/orders/"+id+"/edit"}>Edit order / return</Link></PageHeader>
 
     <section className="stats-grid">
       <article className="stat-card"><span>TOTAL</span><strong>{money(order.total)}</strong><small>{order.currency}</small></article>
