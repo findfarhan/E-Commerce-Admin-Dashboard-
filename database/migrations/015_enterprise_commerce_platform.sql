@@ -59,6 +59,7 @@ create table if not exists metafield_definitions (
   value_type text not null check(value_type in ('text','multiline_text','number_integer','number_decimal','boolean','date','datetime','url','json')),
   validation jsonb not null default '{}'::jsonb,
   position integer not null default 0,
+  active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(store_id,owner_type,namespace,key)
@@ -520,6 +521,45 @@ insert into roles(store_id,name,slug,permissions,system_role)
 select id,'Owner','owner',array['*']::text[],true from stores
 on conflict(store_id,slug) do nothing;
 
+
+insert into roles(store_id,name,slug,permissions,system_role)
+select id,'Manager','manager',array['orders.read','orders.write','returns.read','returns.write','payments.read','payments.write','crm.read','crm.write','catalog.read','catalog.write','inventory.read','inventory.write','purchasing.read','purchasing.write','discounts.read','discounts.write','settings.read','analytics.read','notifications.read','audit.read']::text[],true from stores
+on conflict(store_id,slug) do nothing;
+insert into roles(store_id,name,slug,permissions,system_role)
+select id,'Catalog Manager','catalog-manager',array['catalog.read','catalog.write','inventory.read','inventory.write','analytics.read']::text[],true from stores
+on conflict(store_id,slug) do nothing;
+insert into roles(store_id,name,slug,permissions,system_role)
+select id,'Fulfillment','fulfillment',array['orders.read','orders.write','returns.read','returns.write','payments.read','inventory.read','inventory.write','notifications.read']::text[],true from stores
+on conflict(store_id,slug) do nothing;
+insert into roles(store_id,name,slug,permissions,system_role)
+select id,'Customer Support','customer-support',array['orders.read','crm.read','crm.write','returns.read','notifications.read']::text[],true from stores
+on conflict(store_id,slug) do nothing;
+insert into roles(store_id,name,slug,permissions,system_role)
+select id,'Marketing','marketing',array['catalog.read','discounts.read','discounts.write','analytics.read','notifications.read']::text[],true from stores
+on conflict(store_id,slug) do nothing;
+insert into roles(store_id,name,slug,permissions,system_role)
+select id,'Read Only','read-only',array['orders.read','returns.read','payments.read','crm.read','catalog.read','inventory.read','purchasing.read','discounts.read','settings.read','analytics.read','notifications.read','audit.read']::text[],true from stores
+on conflict(store_id,slug) do nothing;
+
+insert into metafield_definitions(store_id,owner_type,namespace,key,name,description,value_type,validation,position)
+select s.id,'product','jewelry','stone_type','Stone type','Primary gemstone or material','text','{}'::jsonb,10 from stores s
+on conflict(store_id,owner_type,namespace,key) do nothing;
+insert into metafield_definitions(store_id,owner_type,namespace,key,name,description,value_type,validation,position)
+select s.id,'product','jewelry','karat','Karat','Metal purity / karat','text','{"allowedValues":["9K","14K","18K","21K","22K","24K"]}'::jsonb,20 from stores s
+on conflict(store_id,owner_type,namespace,key) do nothing;
+insert into metafield_definitions(store_id,owner_type,namespace,key,name,description,value_type,validation,position)
+select s.id,'product','jewelry','weight','Weight','Finished item weight in grams','number_decimal','{"min":0}'::jsonb,30 from stores s
+on conflict(store_id,owner_type,namespace,key) do nothing;
+insert into metafield_definitions(store_id,owner_type,namespace,key,name,description,value_type,validation,position)
+select s.id,'product','jewelry','certificate','Certificate','Certificate or authenticity reference','text','{}'::jsonb,40 from stores s
+on conflict(store_id,owner_type,namespace,key) do nothing;
+insert into metafield_definitions(store_id,owner_type,namespace,key,name,description,value_type,validation,position)
+select s.id,'product','jewelry','care_instructions','Care instructions','Jewelry care and maintenance guidance','multiline_text','{"maxLength":2000}'::jsonb,50 from stores s
+on conflict(store_id,owner_type,namespace,key) do nothing;
+insert into metafield_definitions(store_id,owner_type,namespace,key,name,description,value_type,validation,position)
+select s.id,'product','jewelry','gender','Gender / audience','Merchandising audience','text','{"allowedValues":["Women","Men","Unisex","Kids"]}'::jsonb,60 from stores s
+on conflict(store_id,owner_type,namespace,key) do nothing;
+
 -- Internal data is server-owned. Keep RLS enabled and remove browser roles.
 alter table metafield_definitions enable row level security;
 alter table metafield_values enable row level security;
@@ -554,7 +594,7 @@ revoke all on table metafield_definitions,metafield_values,customer_addresses,cu
 do $$
 begin
   if exists(select 1 from pg_roles where rolname='render_app') then
-    grant select,insert,update,delete on metafield_definitions,metafield_values,customer_addresses,customer_tags,locations,inventory_levels,inventory_transfers,inventory_transfer_items,draft_orders,draft_order_items,discounts,discount_redemptions,shipping_zones,shipping_rates,tax_rules,payment_transactions,returns,return_items,collection_rules,suppliers,purchase_orders,purchase_order_items,audit_logs,roles,admin_users,notifications,outbound_messages to render_app;
-    grant usage,select on sequence jewelry_quote_number_seq,jewelry_purchase_order_seq,jewelry_return_number_seq to render_app;
+    execute 'grant select,insert,update,delete on metafield_definitions,metafield_values,customer_addresses,customer_tags,locations,inventory_levels,inventory_transfers,inventory_transfer_items,draft_orders,draft_order_items,discounts,discount_redemptions,shipping_zones,shipping_rates,tax_rules,payment_transactions,returns,return_items,collection_rules,suppliers,purchase_orders,purchase_order_items,audit_logs,roles,admin_users,notifications,outbound_messages to render_app';
+    execute 'grant usage,select on sequence jewelry_quote_number_seq,jewelry_purchase_order_seq,jewelry_return_number_seq to render_app';
   end if;
 end $$;
