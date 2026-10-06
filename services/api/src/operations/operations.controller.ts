@@ -14,4 +14,5 @@ export class OperationsController{
   @Get("settings") settings(){return this.operations.settings();}
   @Patch("settings") updateSettings(@Body() body:any){return this.operations.updateSettings(body);}
   @Get("storefront") storefront(){return this.operations.storefront();}
+  @Get("seo-overview") seoOverview(){return this.operations.seoOverview();}
 }

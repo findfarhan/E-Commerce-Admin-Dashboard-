@@ -1,8 +1,6 @@
 import Link from "next/link";
 import {notFound} from "next/navigation";
-import {ImageRenditionPipeline} from "@/components/image-rendition-pipeline";
 import {PageHeader} from "@/components/page-header";
-import {ProductSeoChannelManager} from "@/components/product-seo-channel-manager";
 import {ProductVariantManager} from "@/components/product-variant-manager";
 import {getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
 import {
@@ -176,7 +174,5 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
       </section>
     </article>
 
-    <div style={{marginTop:14}}><ImageRenditionPipeline/></div>
-    <div style={{marginTop:14}}><ProductSeoChannelManager productId={id}/></div>
   </>;
 }

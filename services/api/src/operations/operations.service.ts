@@ -154,4 +154,52 @@ export class OperationsService{
       ],
     };
   }
+
+  async seoOverview(){
+    const store=await this.store();
+    const counts=await this.db.query<any>(
+      "select (select count(*)::int from products where store_id=$1 and status='active') as products,(select count(*)::int from collections where store_id=$1 and status='active') as collections,(select count(*)::int from seo_documents where store_id=$1) as seo_documents,(select count(*)::int from seo_documents where store_id=$1 and robots_index=true) as indexable_documents,(select count(*)::int from entity_facts where store_id=$1) as entity_facts,(select count(*)::int from entity_facts where store_id=$1 and verified=true) as verified_facts,(select count(*)::int from authority_mentions where store_id=$1) as authority_mentions,(select count(*)::int from seo_work_items where store_id=$1 and status<>'done') as open_work_items",
+      [store.id]
+    );
+    const media=await this.db.query<any>(
+      "select count(pm.id)::int as total,count(pm.id) filter(where nullif(trim(pm.alt_text),'') is not null)::int as with_alt from product_media pm join products p on p.id=pm.product_id where p.store_id=$1",
+      [store.id]
+    );
+    const work=await this.db.query<any>(
+      "select id,pillar,title,reason,priority,status,resource_type,resource_id,created_at from seo_work_items where store_id=$1 order by case priority when 'high' then 0 when 'medium' then 1 else 2 end,created_at desc limit 100",
+      [store.id]
+    );
+    const authority=await this.db.query<any>(
+      "select id,source,mention_type,url,status,quality,discovered_at from authority_mentions where store_id=$1 order by discovered_at desc limit 50",
+      [store.id]
+    );
+    const facts=await this.db.query<any>(
+      "select id,field,value,source_type,source_url,verified,updated_at from entity_facts where store_id=$1 order by verified desc,field limit 100",
+      [store.id]
+    );
+    const c=counts.rows[0];
+    const m=media.rows[0];
+    const expected=Number(c.products||0)+Number(c.collections||0);
+    return {
+      products:Number(c.products||0),
+      collections:Number(c.collections||0),
+      seoDocuments:Number(c.seo_documents||0),
+      indexableDocuments:Number(c.indexable_documents||0),
+      coverage:expected?Math.min(100,Math.round(Number(c.seo_documents||0)/expected*100)):0,
+      entityFacts:Number(c.entity_facts||0),
+      verifiedFacts:Number(c.verified_facts||0),
+      authorityMentions:Number(c.authority_mentions||0),
+      openWorkItems:Number(c.open_work_items||0),
+      mediaTotal:Number(m.total||0),
+      mediaWithAlt:Number(m.with_alt||0),
+      mediaAltCoverage:Number(m.total||0)?Math.round(Number(m.with_alt||0)/Number(m.total||0)*100):100,
+      workItems:work.rows,
+      authority:authority.rows,
+      facts:facts.rows,
+      technical:{
+        sitemap:true,robots:true,canonicalRegistry:true,productSchema:true,collectionSeo:true,redirectRegistry:true,
+      },
+    };
+  }
+
 }
