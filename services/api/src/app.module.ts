@@ -1,6 +1,7 @@
 import {Module} from "@nestjs/common";
 import {ScheduleModule} from "@nestjs/schedule";
 import {DatabaseModule} from "./database/database.module";
+import {StorageModule} from "./storage/storage.module";
 import {HealthController} from "./health/health.controller";
 import {ProductsModule} from "./products/products.module";
 import {StorefrontModule} from "./storefront/storefront.module";
@@ -11,9 +12,10 @@ import {JobsModule} from "./jobs/jobs.module";
   imports:[
     ScheduleModule.forRoot(),
     DatabaseModule,
+    StorageModule,
+    MediaModule,
     ProductsModule,
     StorefrontModule,
-    MediaModule,
     JobsModule,
   ],
   controllers:[HealthController],

@@ -1,7 +1,11 @@
 import {Module} from "@nestjs/common";
 import {MediaController} from "./media.controller";
 import {MediaService} from "./media.service";
-import {R2Service} from "./r2.service";
+import {ImageDeliveryService} from "./image-delivery.service";
 
-@Module({controllers:[MediaController],providers:[MediaService,R2Service],exports:[MediaService]})
+@Module({
+  controllers:[MediaController],
+  providers:[MediaService,ImageDeliveryService],
+  exports:[MediaService,ImageDeliveryService],
+})
 export class MediaModule{}
