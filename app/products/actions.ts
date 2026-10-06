@@ -277,3 +277,24 @@ export async function saveProductMetafieldsAction(productId:string,formData:Form
   }
   revalidatePath("/products/"+productId);
 }
+
+
+export async function updateMediaAction(productId:string,mediaId:string,formData:FormData){
+  await request("/v1/admin/media/"+encodeURIComponent(mediaId),{
+    method:"PATCH",
+    body:JSON.stringify({
+      altText:String(formData.get("altText")||"").trim()||null,
+      role:String(formData.get("role")||"gallery"),
+      position:Number(formData.get("position")||0),
+      mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+      focalX:Number(formData.get("focalX")||0.5),
+      focalY:Number(formData.get("focalY")||0.5),
+      ...(formData.has("sourceUrl")?{sourceUrl:String(formData.get("sourceUrl")||"").trim()||null}:{}),
+    }),
+  });
+  revalidatePath("/products/"+productId);
+}
+export async function deleteMediaAction(productId:string,mediaId:string){
+  await request("/v1/admin/media/"+encodeURIComponent(mediaId),{method:"DELETE"});
+  revalidatePath("/products/"+productId);
+}
