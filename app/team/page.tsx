@@ -1,11 +1,13 @@
 import {PageHeader} from "@/components/page-header";
+import {StatusPill} from "@/components/status-pill";
+import {adminRequest} from "@/lib/admin-api";
+import {createAdminUserAction,createRoleAction} from "@/app/enterprise-actions";
 
-export default function Team(){
-  return <>
-    <PageHeader eyebrow="ACCESS / CURRENT MODE" title="Team" description="The current launch uses a single protected owner account. Multi-user RBAC is intentionally not pretended to exist."/>
-    <section className="team-grid">
-      <article className="team-card"><span className="team-avatar">FA</span><h3>Owner</h3><span>Full Jewelry Control access</span><div className="team-card-footer"><span>Active</span><span>Basic-auth protected</span></div></article>
-      <article className="panel empty-panel"><div><h2>Multi-user roles are not enabled yet</h2><p>Catalog, CRM, growth and fulfillment roles can be added when multiple staff accounts are actually needed. Current production access remains single-owner.</p></div></article>
-    </section>
-  </>;
+export default async function Team(){
+ const data=await adminRequest<any>("/v1/admin/roles",0);const roles=data?.roles||[],users=data?.users||[];
+ return <><PageHeader eyebrow="ACCESS / RBAC" title="Team & roles" description="DB-backed admin identities with signed sessions and explicit permission sets. API credentials stay server-side."/>
+ <section className="stats-grid"><article className="stat-card"><span>USERS</span><strong>{users.length}</strong><small>Admin identities</small></article><article className="stat-card"><span>ROLES</span><strong>{roles.length}</strong><small>System + custom</small></article><article className="stat-card"><span>AUTH MODE</span><strong>RBAC</strong><small>Signed 8-hour sessions</small></article><article className="stat-card"><span>OWNER</span><strong>FULL</strong><small>Wildcard permission</small></article></section>
+ <section className="dashboard-grid"><article className="panel enterprise-card"><h3>Add team member</h3><form action={createAdminUserAction} className="field-grid" style={{marginTop:16}}><label className="field"><span>Name</span><input name="displayName"/></label><label className="field"><span>Email</span><input name="email" type="email" required/></label><label className="field"><span>Role</span><select name="roleId" required>{roles.map((r:any)=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label><label className="field"><span>Temporary password</span><input name="password" type="password" minLength={10}/></label><button className="primary-button" type="submit">Create user</button></form></article>
+ <article className="panel enterprise-card"><h3>Custom role</h3><form action={createRoleAction} className="field-grid" style={{marginTop:16}}><label className="field"><span>Name</span><input name="name" required/></label><label className="field"><span>Slug</span><input name="slug" required/></label><label className="field" style={{gridColumn:"1 / -1"}}><span>Permissions</span><textarea name="permissions" rows={4} placeholder="orders.read,orders.write,crm.read"/></label><button className="primary-button" type="submit">Create role</button></form></article></section>
+ <div className="panel table-wrap"><table className="data-table"><thead><tr><th>USER</th><th>ROLE</th><th>STATUS</th><th>LAST SEEN</th><th>PERMISSIONS</th></tr></thead><tbody>{users.map((u:any)=><tr key={u.id}><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td><td>{u.role_name||"Unassigned"}</td><td><StatusPill tone={u.status==="active"?"success":"warning"}>{u.status}</StatusPill></td><td>{u.last_seen_at?new Date(u.last_seen_at).toLocaleString("en-PK"):"Never"}</td><td><small>{(u.permissions||[]).join(", ")}</small></td></tr>)}{!users.length&&<tr><td colSpan={5}>The owner account is created on first secure login.</td></tr>}</tbody></table></div></>;
 }
