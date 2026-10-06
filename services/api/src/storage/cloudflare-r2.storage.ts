@@ -1,5 +1,5 @@
 import {Injectable,ServiceUnavailableException} from "@nestjs/common";
-import {GetObjectCommand,HeadObjectCommand,PutObjectCommand,S3Client} from "@aws-sdk/client-s3";
+import {DeleteObjectCommand,GetObjectCommand,HeadObjectCommand,PutObjectCommand,S3Client} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import type {ObjectStorage} from "./storage.port";
 
@@ -61,6 +61,11 @@ export class CloudflareR2Storage implements ObjectStorage{
       ContentType:contentType,
       CacheControl:"public, max-age=31536000, immutable",
     }));
+  }
+
+  async delete(key:string){
+    const {bucket,client}=this.config();
+    await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}));
   }
 
   publicUrl(key:string){
