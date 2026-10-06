@@ -11,6 +11,9 @@ import {OrdersModule} from "./orders/orders.module";
 import {CustomersModule} from "./customers/customers.module";
 import {DashboardModule} from "./dashboard/dashboard.module";
 import {CheckoutModule} from "./checkout/checkout.module";
+import {CollectionsModule} from "./collections/collections.module";
+import {InventoryModule} from "./inventory/inventory.module";
+import {SeoModule} from "./seo/seo.module";
 
 @Module({
   imports:[
@@ -19,6 +22,9 @@ import {CheckoutModule} from "./checkout/checkout.module";
     StorageModule,
     MediaModule,
     ProductsModule,
+    CollectionsModule,
+    InventoryModule,
+    SeoModule,
     StorefrontModule,
     JobsModule,
     OrdersModule,

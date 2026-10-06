@@ -235,4 +235,120 @@ export class ProductsService{
     );
     return result.rows[0];
   }
+
+  async archiveProduct(id:string){
+    const storeId=await this.storeId();
+    const result=await this.db.query<any>("update products set status='archived',updated_at=now() where id=$1 and store_id=$2 returning id,status",[id,storeId]);
+    if(!result.rowCount) throw new NotFoundException("Product not found");
+    return result.rows[0];
+  }
+
+  async updateOption(productId:string,optionId:string,body:any){
+    const current=await this.db.query<any>("select * from product_options where id=$1 and product_id=$2 limit 1",[optionId,productId]);
+    if(!current.rowCount) throw new NotFoundException("Option not found");
+    const name=body?.name!==undefined?String(body.name).trim():current.rows[0].name;
+    const isVisual=body?.isVisual!==undefined?Boolean(body.isVisual):Boolean(current.rows[0].is_visual);
+    const position=body?.position!==undefined?Number(body.position):Number(current.rows[0].position);
+    if(!name) throw new BadRequestException("Option name is required");
+
+    await this.db.transaction(async client=>{
+      await client.query("update product_options set name=$1,is_visual=$2,position=$3 where id=$4",[name,isVisual,position,optionId]);
+      if(Array.isArray(body?.values)){
+        const desired=body.values.map((raw:any)=>typeof raw==="string"?{value:raw,swatchColor:null}:{value:String(raw.value||"").trim(),swatchColor:raw.swatchColor??null}).filter((v:any)=>v.value);
+        const existing=await client.query<any>("select id,value from product_option_values where option_id=$1 order by position",[optionId]);
+        const desiredValues=new Set(desired.map((v:any)=>v.value));
+        for(const value of existing.rows){
+          if(!desiredValues.has(value.value)){
+            const used=await client.query("select 1 from variant_option_values where option_value_id=$1 limit 1",[value.id]);
+            if(used.rowCount) throw new BadRequestException("Cannot remove option value used by an existing variant: "+value.value);
+            await client.query("delete from product_option_values where id=$1",[value.id]);
+          }
+        }
+        let index=0;
+        for(const value of desired){
+          const found=existing.rows.find((x:any)=>x.value===value.value);
+          if(found){
+            await client.query("update product_option_values set position=$1,swatch_color=$2 where id=$3",[index++,value.swatchColor,found.id]);
+          }else{
+            await client.query("insert into product_option_values(option_id,value,position,swatch_color) values($1,$2,$3,$4)",[optionId,value.value,index++,value.swatchColor]);
+          }
+        }
+      }
+    });
+    return this.getAdminDetail(productId);
+  }
+
+  async deleteOption(productId:string,optionId:string){
+    const used=await this.db.query<any>("select count(*)::int as count from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id where ov.option_id=$1",[optionId]);
+    if(Number(used.rows[0]?.count||0)>0) throw new BadRequestException("Remove or replace variants using this option before deleting it");
+    const result=await this.db.query<any>("delete from product_options where id=$1 and product_id=$2 returning id",[optionId,productId]);
+    if(!result.rowCount) throw new NotFoundException("Option not found");
+    return {ok:true,id:optionId};
+  }
+
+  async updateVariant(productId:string,variantId:string,body:any){
+    const found=await this.db.query<any>("select * from product_variants where id=$1 and product_id=$2 limit 1",[variantId,productId]);
+    if(!found.rowCount) throw new NotFoundException("Variant not found");
+    const current=found.rows[0];
+    const sku=body?.sku!==undefined?String(body.sku).trim():current.sku;
+    const price=body?.price!==undefined?Number(body.price):Number(current.price);
+    const compareAt=body?.compareAtPrice!==undefined?(body.compareAtPrice===null?null:Number(body.compareAtPrice)):current.compare_at_price;
+    const inventory=body?.inventory!==undefined?Number(body.inventory):Number(current.inventory);
+    const status=body?.status!==undefined?String(body.status):current.status;
+    const mediaSetId=body?.mediaSetId!==undefined?(body.mediaSetId||null):current.media_set_id;
+    if(!sku||price<0||inventory<0) throw new BadRequestException("Invalid variant values");
+    await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,inventory=$4,status=$5,media_set_id=$6,updated_at=now() where id=$7",[sku,price,compareAt,inventory,status,mediaSetId,variantId]);
+    return this.getAdminDetail(productId);
+  }
+
+  async archiveVariant(productId:string,variantId:string){
+    const result=await this.db.query<any>("update product_variants set status='draft',updated_at=now() where id=$1 and product_id=$2 returning id,status",[variantId,productId]);
+    if(!result.rowCount) throw new NotFoundException("Variant not found");
+    return result.rows[0];
+  }
+
+  async generateVariants(productId:string,body:any){
+    const detail=await this.getAdminDetail(productId);
+    if(!detail.options.length) throw new BadRequestException("Add product options before generating variants");
+    const basePrice=Number(body?.price);
+    const inventory=Number(body?.inventory??0);
+    if(!Number.isFinite(basePrice)||basePrice<0||inventory<0) throw new BadRequestException("Valid price and inventory are required");
+
+    const combinations:Record<string,string>[]=[];
+    const walk=(index:number,current:Record<string,string>)=>{
+      if(index>=detail.options.length){combinations.push({...current});return;}
+      const option=detail.options[index];
+      for(const value of option.values){
+        current[option.name]=value.value;
+        walk(index+1,current);
+      }
+      delete current[option.name];
+    };
+    walk(0,{});
+
+    if(combinations.length>500) throw new BadRequestException("Variant generation is limited to 500 combinations");
+
+    const existing=new Set((detail.variants||[]).map((variant:any)=>JSON.stringify(Object.entries(variant.selected_options||{}).sort())));
+    const baseSku=String(body?.baseSku||detail.product.handle||"VAR").toUpperCase().replace(/[^A-Z0-9]+/g,"-").replace(/^-|-$/g,"");
+
+    for(const combo of combinations){
+      const key=JSON.stringify(Object.entries(combo).sort());
+      if(existing.has(key)) continue;
+      const visualEntries=detail.options.filter((option:any)=>option.is_visual).map((option:any)=>[option.name,combo[option.name]]);
+      const mediaSet=(detail.mediaSets||[]).find((set:any)=>Object.entries(set.match_options||{}).every(([name,value])=>combo[name]===value));
+      const suffix=Object.values(combo).map(value=>String(value).toUpperCase().replace(/[^A-Z0-9]+/g,"").slice(0,4)).join("-");
+      await this.createVariant(productId,{
+        sku:baseSku+"-"+suffix,
+        price:basePrice,
+        inventory,
+        status:"active",
+        mediaSetId:mediaSet?.id??null,
+        selectedOptions:combo,
+        visualOptions:Object.fromEntries(visualEntries as any),
+      });
+    }
+
+    return this.getAdminDetail(productId);
+  }
+
 }

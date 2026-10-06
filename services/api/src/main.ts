@@ -6,7 +6,7 @@ import {AppModule} from "./app.module";
 async function bootstrap(){
   const app=await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({bodyLimit:1_048_576}),
+    new FastifyAdapter({bodyLimit:1_048_576,trustProxy:true}),
     {logger:["log","warn","error"]}
   );
 
@@ -22,7 +22,16 @@ async function bootstrap(){
       cb(new Error("Origin not allowed"),false);
     },
     methods:["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-    allowedHeaders:["Content-Type","Authorization","X-Admin-Key"],
+    allowedHeaders:["Content-Type","Authorization","X-Admin-Key","Idempotency-Key"],
+  });
+
+  const server=app.getHttpAdapter().getInstance();
+  server.addHook("onSend",async (_request:any,reply:any,payload:any)=>{
+    reply.header("X-Content-Type-Options","nosniff");
+    reply.header("X-Frame-Options","DENY");
+    reply.header("Referrer-Policy","strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy","camera=(), microphone=(), geolocation=()");
+    return payload;
   });
 
   app.enableShutdownHooks();

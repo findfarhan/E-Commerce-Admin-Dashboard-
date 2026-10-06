@@ -4,7 +4,7 @@ import {customers as fallbackCustomers,orders as fallbackOrders,products as fall
 const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
 const adminKey=process.env.ADMIN_API_KEY||"";
 
-async function adminRequest<T>(path:string,revalidate=15):Promise<T|null>{
+export async function adminRequest<T>(path:string,revalidate=15):Promise<T|null>{
   if(!adminKey) return null;
   try{
     const response=await fetch(apiBase+path,{
@@ -23,16 +23,11 @@ export async function getAdminProducts():Promise<Product[]>{
   const response=await adminRequest<{items:any[]}>("/v1/admin/products");
   if(!response) return fallbackProducts;
   return response.items.map((p:any)=>({
-    id:p.id,
-    storeId:p.store_id,
-    sku:p.primary_sku||"—",
-    name:p.title,
-    inventory:Number(p.inventory||0),
-    price:Number(p.price||0),
-    status:p.status,
-    sales30d:0,
-    variantCount:Number(p.variant_count||0),
-    mediaSetCount:Number(p.media_set_count||0),
+    id:p.id,storeId:p.store_id,sku:p.primary_sku||"—",name:p.title,
+    inventory:Number(p.inventory||0),price:Number(p.price||0),status:p.status,sales30d:0,
+    variantCount:Number(p.variant_count||0),mediaSetCount:Number(p.media_set_count||0),
+    handle:p.handle,description:p.description||"",category:p.category||"",material:p.material||"",
+    tag:p.tag||"",featured:Boolean(p.featured),
   }));
 }
 
@@ -41,60 +36,33 @@ export async function getAdminProductDetail(id:string){
   if(!response){
     const product=fallbackProducts.find(p=>p.id===id);
     if(!product) return null;
-    return {
-      product,
-      options:productOptionsByProduct[id]??[],
-      variants:productVariantsByProduct[id]??[],
-      mediaSets:productMediaSetsByProduct[id]??[],
-      media:[],
-      source:"fallback" as const,
-    };
+    return {product,options:productOptionsByProduct[id]??[],variants:productVariantsByProduct[id]??[],mediaSets:productMediaSetsByProduct[id]??[],media:[],source:"fallback" as const};
   }
 
   const product:Product={
-    id:response.product.id,
-    storeId:response.product.store_id,
-    sku:response.variants?.[0]?.sku||"—",
-    name:response.product.title,
-    inventory:Number(response.product.inventory||0),
-    price:Number(response.product.price_amount||0),
-    status:response.product.status,
-    sales30d:0,
-    variantCount:response.variants?.length||0,
-    mediaSetCount:response.mediaSets?.length||0,
+    id:response.product.id,storeId:response.product.store_id,sku:response.variants?.[0]?.sku||"—",
+    name:response.product.title,inventory:Number(response.product.inventory||0),price:Number(response.product.price_amount||0),
+    status:response.product.status,sales30d:0,variantCount:response.variants?.length||0,mediaSetCount:response.mediaSets?.length||0,
+    handle:response.product.handle,description:response.product.description||"",category:response.product.category||"",
+    material:response.product.material||"",tag:response.product.tag||"",featured:Boolean(response.product.featured),
   };
 
   const options:ProductOption[]=(response.options||[]).map((o:any)=>({
-    id:o.id,
-    name:o.name,
-    isVisual:Boolean(o.is_visual),
-    values:(o.values||[]).map((v:any)=>({
-      id:v.id,
-      value:v.value,
-      swatchColor:v.swatchColor||undefined,
-    })),
+    id:o.id,name:o.name,isVisual:Boolean(o.is_visual),
+    values:(o.values||[]).map((v:any)=>({id:v.id,value:v.value,swatchColor:v.swatchColor||undefined})),
   }));
 
   const variants:ProductVariant[]=(response.variants||[]).map((v:any)=>{
     const selectedOptions=v.selected_options||{};
     return {
-      id:v.id,
-      productId:v.product_id,
-      sku:v.sku,
-      title:v.title||Object.values(selectedOptions).join(" / "),
-      price:Number(v.price||0),
-      inventory:Number(v.inventory||0),
-      selectedOptions,
-      status:v.status==="draft"?"draft":"active",
+      id:v.id,productId:v.product_id,sku:v.sku,title:v.title||Object.values(selectedOptions).join(" / "),
+      price:Number(v.price||0),inventory:Number(v.inventory||0),selectedOptions,status:v.status==="draft"?"draft":"active",
     };
   });
 
   const media=response.media||[];
   const mediaSets:ProductMediaSet[]=(response.mediaSets||[]).map((m:any)=>({
-    id:m.id,
-    productId:m.product_id,
-    name:m.name,
-    matchOptions:m.match_options||{},
+    id:m.id,productId:m.product_id,name:m.name,matchOptions:m.match_options||{},
     imageUrls:media.filter((x:any)=>x.mediaSetId===m.id).map((x:any)=>x.responsive?.card_desktop||x.url).filter(Boolean),
     isDefault:Boolean(m.is_default),
   }));
@@ -106,50 +74,50 @@ export async function getAdminOrders():Promise<Order[]>{
   const response=await adminRequest<{items:any[]}>("/v1/admin/orders",10);
   if(!response) return fallbackOrders;
   return response.items.map((o:any)=>({
-    id:o.id,
-    storeId:"",
-    number:o.order_number,
-    customer:o.customer_name||"Guest",
-    email:o.customer_email||"",
-    total:Number(o.total||0),
-    status:o.status,
-    paymentStatus:o.payment_status,
-    items:0,
+    id:o.id,storeId:"",number:o.order_number,customer:o.customer_name||"Guest",email:o.customer_email||"",
+    total:Number(o.total||0),status:o.status,paymentStatus:o.payment_status,items:Number(o.item_count||0),
     createdAt:o.created_at?new Date(o.created_at).toLocaleString("en-PK"):"",
   }));
+}
+
+export async function getAdminOrderDetail(id:string){
+  return adminRequest<any>("/v1/admin/orders/"+encodeURIComponent(id),5);
 }
 
 export async function getAdminCustomers():Promise<Customer[]>{
   const response=await adminRequest<{items:any[]}>("/v1/admin/customers",15);
   if(!response) return fallbackCustomers;
   return response.items.map((c:any)=>({
-    id:c.id,
-    storeId:"",
-    name:c.name||"Guest",
-    email:c.email||"",
-    segment:c.attributes?.segment||"customer",
-    orders:Number(c.orders_count||0),
-    lifetimeValue:Number(c.lifetime_value||0),
+    id:c.id,storeId:"",name:c.name||"Guest",email:c.email||"",segment:c.attributes?.segment||"customer",
+    orders:Number(c.orders_count||0),lifetimeValue:Number(c.lifetime_value||0),
     lastOrderAt:c.last_order_at?new Date(c.last_order_at).toLocaleDateString("en-PK"):"—",
   }));
+}
+
+export async function getAdminCustomerDetail(id:string){
+  return adminRequest<any>("/v1/admin/customers/"+encodeURIComponent(id),10);
+}
+
+export async function getAdminCollections(){
+  const response=await adminRequest<{items:any[]}>("/v1/admin/collections",15);
+  return response?.items||[];
+}
+
+export async function getAdminCollectionDetail(id:string){
+  return adminRequest<any>("/v1/admin/collections/"+encodeURIComponent(id),10);
+}
+
+export async function getAdminSeo(resourceType:string,resourceId:string){
+  return adminRequest<any>("/v1/admin/seo/"+encodeURIComponent(resourceType)+"/"+encodeURIComponent(resourceId),15);
 }
 
 export async function getAdminDashboard(){
   const response=await adminRequest<any>("/v1/admin/dashboard",10);
   if(!response){
     return {
-      id:fallbackStore.id,
-      name:fallbackStore.name,
-      domain:fallbackStore.domain,
-      currency:fallbackStore.currency,
-      timezone:fallbackStore.timezone,
-      products:fallbackProducts.length,
-      customers:fallbackStore.customers,
-      orders_today:fallbackStore.ordersToday,
-      revenue_today:fallbackStore.revenueToday,
-      queued_jobs:0,
-      low_stock_variants:0,
-      source:"fallback" as const,
+      id:fallbackStore.id,name:fallbackStore.name,domain:fallbackStore.domain,currency:fallbackStore.currency,timezone:fallbackStore.timezone,
+      products:fallbackProducts.length,customers:fallbackStore.customers,orders_today:fallbackStore.ordersToday,revenue_today:fallbackStore.revenueToday,
+      queued_jobs:0,low_stock_variants:0,source:"fallback" as const,
     };
   }
   return {...response,source:"api" as const};

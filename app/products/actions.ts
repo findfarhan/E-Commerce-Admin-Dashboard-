@@ -129,3 +129,67 @@ export async function createMediaSetAction(id:string,formData:FormData){
 
   revalidatePath("/products/"+id);
 }
+
+
+export async function generateVariantsAction(id:string,formData:FormData){
+  await request("/v1/admin/products/"+encodeURIComponent(id)+"/variants/generate",{
+    method:"POST",
+    body:JSON.stringify({
+      baseSku:String(formData.get("baseSku")||"").trim()||undefined,
+      price:Number(formData.get("price")||0),
+      inventory:Number(formData.get("inventory")||0),
+    }),
+  });
+  revalidatePath("/products");
+  revalidatePath("/products/"+id);
+}
+
+export async function updateVariantAction(productId:string,variantId:string,formData:FormData){
+  await request("/v1/admin/products/"+encodeURIComponent(productId)+"/variants/"+encodeURIComponent(variantId),{
+    method:"PATCH",
+    body:JSON.stringify({
+      sku:String(formData.get("sku")||"").trim(),
+      price:Number(formData.get("price")||0),
+      inventory:Number(formData.get("inventory")||0),
+      status:String(formData.get("status")||"active"),
+      mediaSetId:String(formData.get("mediaSetId")||"").trim()||null,
+    }),
+  });
+  revalidatePath("/products");
+  revalidatePath("/products/"+productId);
+}
+
+export async function adjustInventoryAction(productId:string,variantId:string,formData:FormData){
+  await request("/v1/admin/inventory/variants/"+encodeURIComponent(variantId)+"/adjust",{
+    method:"POST",
+    body:JSON.stringify({
+      delta:Number(formData.get("delta")||0),
+      reason:String(formData.get("reason")||"").trim()||"Manual adjustment",
+      actor:"admin",
+    }),
+  });
+  revalidatePath("/products");
+  revalidatePath("/products/"+productId);
+}
+
+export async function archiveVariantAction(productId:string,variantId:string){
+  await request("/v1/admin/products/"+encodeURIComponent(productId)+"/variants/"+encodeURIComponent(variantId),{method:"DELETE"});
+  revalidatePath("/products");
+  revalidatePath("/products/"+productId);
+}
+
+export async function saveProductSeoAction(productId:string,handle:string,formData:FormData){
+  await request("/v1/admin/seo/product/"+encodeURIComponent(productId),{
+    method:"PUT",
+    body:JSON.stringify({
+      title:String(formData.get("title")||"").trim()||null,
+      metaDescription:String(formData.get("metaDescription")||"").trim()||null,
+      canonicalPath:String(formData.get("canonicalPath")||("/product/"+handle)).trim(),
+      index:formData.get("index")==="on",
+      follow:true,
+      schemaType:"Product",
+      metadata:{},
+    }),
+  });
+  revalidatePath("/products/"+productId);
+}
