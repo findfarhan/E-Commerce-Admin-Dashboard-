@@ -58,3 +58,8 @@ Storefront Vercel:
 - NEXT_PUBLIC_API_URL
 
 Cloudflare variables are optional until the media phase is enabled.
+
+Current media mode:
+- `MEDIA_STORAGE_PROVIDER=source-url`
+- existing `product_media.source_url` images remain fully usable
+- managed upload/rendition endpoints return a clear service-unavailable response until Cloudflare is enabled
