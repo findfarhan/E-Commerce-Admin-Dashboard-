@@ -236,7 +236,7 @@ export async function createSourceMediaAction(productId:string,formData:FormData
 
 
 export async function duplicateProductAction(productId:string){
-  const result=await request<any>("/v1/admin/products/"+encodeURIComponent(productId)+"/duplicate",{method:"POST"});
+  const result:any=await request("/v1/admin/products/"+encodeURIComponent(productId)+"/duplicate",{method:"POST"});
   revalidatePath("/products");
   redirect("/products/"+result.product.id);
 }
