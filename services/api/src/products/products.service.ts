@@ -205,7 +205,9 @@ export class ProductsService{
       }
     });
 
-    return this.getAdminDetail(productId);
+    const created=await this.getAdminDetail(productId);
+    await this.auditProduct(storeId,"product.created",productId,null,created.product);
+    return created;
   }
 
   async updateProduct(id:string,body:any){
@@ -252,7 +254,9 @@ export class ProductsService{
         }
       });
     }
-    return this.getAdminDetail(id);
+    const updatedDetail=await this.getAdminDetail(id);
+    await this.auditProduct(storeId,"product.updated",id,current.rows[0],updatedDetail.product);
+    return updatedDetail;
   }
 
   async createOption(productId:string,body:any){
@@ -406,6 +410,7 @@ export class ProductsService{
     const storeId=await this.storeId();
     const result=await this.db.query<any>("update products set status='archived',updated_at=now() where id=$1 and store_id=$2 returning id,status",[id,storeId]);
     if(!result.rowCount) throw new NotFoundException("Product not found");
+    await this.auditProduct(storeId,"product.archived",id,null,result.rows[0]);
     return result.rows[0];
   }
 
@@ -467,7 +472,11 @@ export class ProductsService{
     if(compareAt!==null&&(!Number.isFinite(Number(compareAt))||Number(compareAt)<0)) throw new BadRequestException("Invalid compare-at price");
     if(!["active","draft"].includes(status)) throw new BadRequestException("Invalid variant status");
     await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,status=$4,media_set_id=$5,cost_price=$6,weight_grams=$7,updated_at=now() where id=$8",[sku,price,compareAt,status,mediaSetId,costPrice,weightGrams,variantId]);
-    return this.getAdminDetail(productId);
+    const detail=await this.getAdminDetail(productId);
+    const afterVariant=detail.variants.find((v:any)=>v.id===variantId);
+    const storeId=await this.storeId();
+    await this.auditProduct(storeId,"variant.updated",productId,current,afterVariant,{variantId});
+    return detail;
   }
 
   async archiveVariant(productId:string,variantId:string){
