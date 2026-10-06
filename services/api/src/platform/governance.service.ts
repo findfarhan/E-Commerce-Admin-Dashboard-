@@ -1,4 +1,5 @@
-import {BadRequestException,Injectable,NotFoundException} from "@nestjs/common";
+import {BadRequestException,ConflictException,Injectable,NotFoundException,UnauthorizedException} from "@nestjs/common";
+import {pbkdf2Sync,randomBytes,timingSafeEqual} from "node:crypto";
 import type {PoolClient} from "pg";
 import {DatabaseService} from "../database/database.service";
 import {StoreContextService} from "./store-context.service";
@@ -75,6 +76,93 @@ export class GovernanceService{
       [status,id,storeId]
     );
     if(!result.rowCount) throw new NotFoundException("Notification not found");
+    return result.rows[0];
+  }
+
+
+  private password(password:string,salt?:string,iterations=210000){
+    if(password.length<10) throw new BadRequestException("Admin passwords must be at least 10 characters");
+    const actualSalt=salt||randomBytes(18).toString("hex");
+    const hash=pbkdf2Sync(password,actualSalt,iterations,32,"sha256").toString("hex");
+    return {hash,salt:actualSalt,iterations};
+  }
+
+  async bootstrapAdmin(body:any){
+    const storeId=await this.context.storeId();
+    const count=await this.db.query<any>("select count(*)::int as count from admin_users where store_id=$1",[storeId]);
+    if(Number(count.rows[0]?.count||0)>0) throw new ConflictException("Admin users are already configured");
+    const email=String(body?.email||body?.username||"").trim().toLowerCase();
+    const password=String(body?.password||"");
+    if(!email) throw new BadRequestException("Admin username or email is required");
+    const credential=this.password(password);
+    const role=await this.db.query<any>("select id from roles where store_id=$1 and slug='owner' limit 1",[storeId]);
+    if(!role.rowCount) throw new NotFoundException("Owner role is not configured");
+    const result=await this.db.query<any>(
+      "insert into admin_users(store_id,email,display_name,role_id,password_hash,password_salt,password_iterations,status,last_login_at,created_by) values($1,$2,$3,$4,$5,$6,$7,'active',now(),'bootstrap') returning id,email,display_name,role_id,status,created_at",
+      [storeId,email,String(body?.displayName||"Owner").trim()||"Owner",role.rows[0].id,credential.hash,credential.salt,credential.iterations]
+    );
+    await this.audit(storeId,"admin_user.bootstrapped","admin_user",result.rows[0].id,{actor:email,after:result.rows[0]});
+    return result.rows[0];
+  }
+
+  async login(body:any){
+    const storeId=await this.context.storeId();
+    const email=String(body?.email||body?.username||"").trim().toLowerCase();
+    const password=String(body?.password||"");
+    if(!email||!password) throw new UnauthorizedException("Invalid credentials");
+    const result=await this.db.query<any>(
+      "select u.*,r.name as role_name,r.slug as role_slug,r.permissions from admin_users u left join roles r on r.id=u.role_id where u.store_id=$1 and lower(u.email)=$2 limit 1",
+      [storeId,email]
+    );
+    if(!result.rowCount||result.rows[0].status!=="active"||!result.rows[0].password_hash||!result.rows[0].password_salt) throw new UnauthorizedException("Invalid credentials");
+    const user=result.rows[0];
+    const candidate=this.password(password,user.password_salt,Number(user.password_iterations||210000)).hash;
+    const expected=Buffer.from(String(user.password_hash),"hex");
+    const actual=Buffer.from(candidate,"hex");
+    if(expected.length!==actual.length||!timingSafeEqual(expected,actual)) throw new UnauthorizedException("Invalid credentials");
+    await this.db.query("update admin_users set last_login_at=now(),last_seen_at=now(),updated_at=now() where id=$1",[user.id]);
+    return {id:user.id,email:user.email,displayName:user.display_name||user.email,role:{id:user.role_id,name:user.role_name,slug:user.role_slug,permissions:user.permissions||[]}};
+  }
+
+  async createAdminUser(body:any){
+    const storeId=await this.context.storeId();
+    const email=String(body?.email||"").trim().toLowerCase();
+    if(!email||!email.includes("@")) throw new BadRequestException("A valid admin email is required");
+    const role=await this.db.query<any>("select * from roles where id=$1 and store_id=$2",[String(body?.roleId||""),storeId]);
+    if(!role.rowCount) throw new BadRequestException("Role is invalid");
+    const password=String(body?.password||"");
+    const credential=password?this.password(password):null;
+    const status=credential?"active":"invited";
+    const result=await this.db.query<any>(
+      "insert into admin_users(store_id,email,display_name,role_id,password_hash,password_salt,password_iterations,status,invited_at,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,case when $8='invited' then now() else null end,$9) returning id,email,display_name,role_id,status,created_at",
+      [storeId,email,String(body?.displayName||"").trim()||null,role.rows[0].id,credential?.hash||null,credential?.salt||null,credential?.iterations||210000,status,String(body?.actor||"admin")]
+    );
+    await this.audit(storeId,"admin_user.created","admin_user",result.rows[0].id,{actor:body?.actor,after:result.rows[0],metadata:{role:role.rows[0].slug}});
+    return result.rows[0];
+  }
+
+  async updateAdminUser(id:string,body:any){
+    const storeId=await this.context.storeId();
+    const current=await this.db.query<any>("select * from admin_users where id=$1 and store_id=$2",[id,storeId]);
+    if(!current.rowCount) throw new NotFoundException("Admin user not found");
+    let roleId=current.rows[0].role_id;
+    if(body?.roleId!==undefined){
+      const role=await this.db.query<any>("select id from roles where id=$1 and store_id=$2",[String(body.roleId),storeId]);
+      if(!role.rowCount) throw new BadRequestException("Role is invalid");
+      roleId=role.rows[0].id;
+    }
+    const status=body?.status===undefined?current.rows[0].status:String(body.status);
+    if(!["invited","active","suspended"].includes(status)) throw new BadRequestException("Invalid admin status");
+    let hash=current.rows[0].password_hash,salt=current.rows[0].password_salt,iterations=current.rows[0].password_iterations;
+    if(body?.password){
+      const credential=this.password(String(body.password));
+      hash=credential.hash;salt=credential.salt;iterations=credential.iterations;
+    }
+    const result=await this.db.query<any>(
+      "update admin_users set display_name=$1,role_id=$2,password_hash=$3,password_salt=$4,password_iterations=$5,status=$6,updated_at=now() where id=$7 and store_id=$8 returning id,email,display_name,role_id,status,updated_at",
+      [body?.displayName===undefined?current.rows[0].display_name:String(body.displayName||"").trim()||null,roleId,hash,salt,iterations,status,id,storeId]
+    );
+    await this.audit(storeId,"admin_user.updated","admin_user",id,{actor:body?.actor,before:current.rows[0],after:result.rows[0]});
     return result.rows[0];
   }
 
