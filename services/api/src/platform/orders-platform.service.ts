@@ -82,6 +82,20 @@ export class OrdersPlatformService{
     return lines;
   }
 
+  async orderCatalog(){
+    const storeId=await this.context.storeId();
+    const result=await this.db.query<any>(
+      `select v.id as variant_id,v.sku,v.price,v.cost_amount,v.inventory,v.status as variant_status,
+       p.id as product_id,p.title,p.handle,p.status as product_status,p.vendor,p.product_type,
+       coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options
+       from product_variants v join products p on p.id=v.product_id
+       where p.store_id=$1 and p.status<>'archived' and v.status<>'archived'
+       order by p.title,v.sku limit 2000`,
+      [storeId]
+    );
+    return {items:result.rows};
+  }
+
   async draftOrders(){
     const storeId=await this.context.storeId();
     const result=await this.db.query<any>(
