@@ -22,7 +22,9 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const saveSeo=saveProductSeoAction.bind(null,id,product.handle||"");
   const archiveProduct=archiveProductAction.bind(null,id);
   const duplicateProduct=duplicateProductAction.bind(null,id);
-  const visualOptions=options.filter(option=>option.isVisual);\n  const saveMetafields=saveProductMetafieldsAction.bind(null,id);\n  const metafieldMap=new Map<string,any>((metafieldValues?.items||[]).map((x:any)=>[x.definition_id,x]));
+  const visualOptions=options.filter(option=>option.isVisual);
+  const saveMetafields=saveProductMetafieldsAction.bind(null,id);
+  const metafieldMap=new Map<string,any>((metafieldValues?.items||[]).map((x:any)=>[x.definition_id,x]));
 
   return <>
     <PageHeader eyebrow="PRODUCT STUDIO" title={product.name} description="Canonical product, sellable variants, inventory, visual media rules, SEO and channel overlays.">
@@ -111,6 +113,8 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
           <label className="field"><span>SKU</span><input name="sku" required placeholder="CEL-YG-DIA-7"/></label>
           <label className="field"><span>Price (PKR)</span><input name="price" type="number" min="0" required/></label>
           <label className="field"><span>Compare-at price</span><input name="compareAtPrice" type="number" min="0"/></label>
+          <label className="field"><span>Cost / unit</span><input name="costPrice" type="number" min="0"/></label>
+          <label className="field"><span>Weight (g)</span><input name="weightGrams" type="number" min="0"/></label>
           <label className="field"><span>Inventory</span><input name="inventory" type="number" min="0" defaultValue="0"/></label>
           <label className="field"><span>Media set</span><select name="mediaSetId" defaultValue=""><option value="">Automatic / none</option>{mediaSets.map(set=><option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
           <label className="field"><span>Status</span><select name="status" defaultValue="active"><option value="active">Active</option><option value="draft">Draft</option></select></label>
@@ -132,6 +136,8 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
               <form action={update} className="field-grid">
                 <label className="field"><span>SKU</span><input name="sku" defaultValue={variant.sku}/></label>
                 <label className="field"><span>Price</span><input name="price" type="number" min="0" defaultValue={variant.price}/></label>
+                <label className="field"><span>Cost / unit</span><input name="costPrice" type="number" min="0" defaultValue={variant.costPrice??""}/></label>
+                <label className="field"><span>Weight (g)</span><input name="weightGrams" type="number" min="0" defaultValue={variant.weightGrams??""}/></label>
                 <label className="field"><span>Current stock</span><input type="number" value={variant.inventory} readOnly aria-readonly="true"/></label>
                 <label className="field"><span>Status</span><select name="status" defaultValue={variant.status}><option value="active">Active</option><option value="draft">Draft</option></select></label>
                 <label className="field"><span>Media set</span><select name="mediaSetId" defaultValue={variant.mediaSetId||""}><option value="">None / auto</option>{mediaSets.map(set=><option key={set.id} value={set.id}>{set.name}</option>)}</select></label>
@@ -161,6 +167,18 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
         </form>
       </section>
     </article>}
+
+    <article className="panel settings-panel" style={{marginTop:14}}>
+      <section className="settings-section">
+        <h2>Product metafields</h2>
+        <p>Typed custom attributes feed filters, smart collections, SEO/discovery and future channel mappings.</p>
+        {(metafieldDefs?.items||[]).length?<form action={saveMetafields} className="field-grid">
+          <input type="hidden" name="__definitions" value={JSON.stringify((metafieldDefs?.items||[]).map((x:any)=>({id:x.id,namespace:x.namespace,key:x.key,value_type:x.value_type})))}/>
+          {(metafieldDefs?.items||[]).map((d:any)=>{const current=metafieldMap.get(d.id);const raw=current?.value;const value=Array.isArray(raw)?raw.join(", "):typeof raw==="object"&&raw!==null?JSON.stringify(raw):String(raw??"");return <label className="field" key={d.id}><span>{d.name} <small>{d.namespace}.{d.key}</small></span>{d.value_type==="boolean"?<select name={"metafield__"+d.id} defaultValue={value||"false"}><option value="false">False</option><option value="true">True</option></select>:<input name={"metafield__"+d.id} defaultValue={value} placeholder={d.value_type}/>}</label>})}
+          <div className="page-actions"><button className="primary-button" type="submit">Save metafields</button></div>
+        </form>:<p>No definitions yet. Create them in the Metafields module.</p>}
+      </section>
+    </article>
 
     <article className="panel settings-panel" style={{marginTop:14}}>
       <section className="settings-section">
