@@ -34,7 +34,11 @@ export async function updateCollectionAction(id:string,formData:FormData){
     }),
   });
   const productIds=formData.getAll("productIds").map(String);
-  await adminMutation("/v1/admin/collections/"+id+"/products",{method:"PUT",body:JSON.stringify({productIds})});
+  const orderedProductIds=productIds
+    .map((productId,index)=>({productId,position:Number(formData.get("position__"+productId)??index)}))
+    .sort((a,b)=>a.position-b.position)
+    .map(item=>item.productId);
+  await adminMutation("/v1/admin/collections/"+id+"/products",{method:"PUT",body:JSON.stringify({productIds:orderedProductIds})});
   revalidatePath("/collections");
   revalidatePath("/collections/"+id);
 }
