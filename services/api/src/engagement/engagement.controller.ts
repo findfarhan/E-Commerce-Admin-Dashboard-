@@ -11,6 +11,9 @@ export class StorefrontEngagementController{
   @Post("newsletter")
   newsletter(@Body() body:any){return this.engagement.subscribe(body);}
 
+  @Post("newsletter/unsubscribe")
+  unsubscribe(@Body() body:any){return this.engagement.unsubscribe(body);}
+
   @Post("commissions")
   commission(@Body() body:any){return this.engagement.createCommission(body);}
 }
