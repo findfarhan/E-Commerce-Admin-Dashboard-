@@ -2,10 +2,10 @@ import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
 import {ProductVariantManager} from "@/components/product-variant-manager";
-import {getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
+import {adminRequest,getAdminProductDetail,getAdminSeo} from "@/lib/admin-api";
 import {
   adjustInventoryAction,archiveVariantAction,createMediaSetAction,createOptionAction,createVariantAction,
-  archiveProductAction,deleteOptionAction,duplicateProductAction,generateVariantsAction,saveProductSeoAction,updateOptionAction,updateVariantAction
+  archiveProductAction,deleteOptionAction,duplicateProductAction,generateVariantsAction,saveProductSeoAction,saveProductMetafieldsAction,updateOptionAction,updateVariantAction
 } from "../actions";
 
 export default async function ProductPage({params}:{params:Promise<{id:string}>}){
@@ -14,7 +14,7 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   if(!detail) notFound();
 
   const {product,options,variants,mediaSets}=detail;
-  const seo=await getAdminSeo("product",id);
+  const [seo,metafieldDefs,metafieldValues]=await Promise.all([getAdminSeo("product",id),adminRequest<any>("/v1/admin/commerce/metafield-definitions?resourceType=product",0),adminRequest<any>("/v1/admin/commerce/metafields/product/"+encodeURIComponent(id),0)]);
   const addOption=createOptionAction.bind(null,id);
   const addVariant=createVariantAction.bind(null,id);
   const addMediaSet=createMediaSetAction.bind(null,id);
@@ -22,7 +22,7 @@ export default async function ProductPage({params}:{params:Promise<{id:string}>}
   const saveSeo=saveProductSeoAction.bind(null,id,product.handle||"");
   const archiveProduct=archiveProductAction.bind(null,id);
   const duplicateProduct=duplicateProductAction.bind(null,id);
-  const visualOptions=options.filter(option=>option.isVisual);
+  const visualOptions=options.filter(option=>option.isVisual);\n  const saveMetafields=saveProductMetafieldsAction.bind(null,id);\n  const metafieldMap=new Map<string,any>((metafieldValues?.items||[]).map((x:any)=>[x.definition_id,x]));
 
   return <>
     <PageHeader eyebrow="PRODUCT STUDIO" title={product.name} description="Canonical product, sellable variants, inventory, visual media rules, SEO and channel overlays.">
