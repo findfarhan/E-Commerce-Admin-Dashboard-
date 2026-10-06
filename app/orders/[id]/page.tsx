@@ -46,6 +46,7 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
           <h2>Customer & delivery</h2>
           <p><b>{order.customer_name}</b><br/>{order.customer_email}<br/>{order.customer_phone}</p>
           <p>{order.shipping_address?.line1}<br/>{order.shipping_address?.line2}<br/>{order.shipping_address?.city} {order.shipping_address?.region}<br/>{order.shipping_address?.country}</p>
+          {order.terms_accepted_at&&<p style={{marginTop:14,fontSize:12}}>Terms accepted: <b>{new Date(order.terms_accepted_at).toLocaleString("en-PK")}</b></p>}
           {order.is_gift&&<div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--line)"}}><span className="tag">GIFT ORDER</span><h3 style={{margin:"12px 0 6px"}}>Private gift message</h3><p>{order.gift_message||"No message supplied."}</p></div>}
         </section>
       </article>
