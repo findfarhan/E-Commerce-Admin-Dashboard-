@@ -14,6 +14,49 @@ export class MediaService{
     @Inject(OBJECT_STORAGE) private readonly storage:ObjectStorage,
   ){}
 
+  async createSource(productId:string,body:any){
+    const raw=String(body?.sourceUrl||"").trim();
+    let sourceUrl:string;
+    try{
+      const parsed=new URL(raw);
+      if(parsed.protocol!=="https:") throw new Error("https required");
+      sourceUrl=parsed.toString();
+    }catch{
+      throw new BadRequestException("A valid HTTPS image URL is required");
+    }
+
+    const role=String(body?.role||"gallery");
+    const position=Number(body?.position??0);
+    const altText=String(body?.altText||"").trim()||null;
+    const mediaSetId=body?.mediaSetId?String(body.mediaSetId):null;
+    if(!["primary","gallery"].includes(role)) throw new BadRequestException("Invalid media role");
+    if(!Number.isInteger(position)||position<0) throw new BadRequestException("Media position must be a non-negative whole number");
+
+    const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
+    return this.db.transaction(async client=>{
+      const product=await client.query(
+        "select p.id from products p join stores s on s.id=p.store_id where p.id=$1 and s.domain=$2 limit 1",
+        [productId,domain]
+      );
+      if(!product.rowCount) throw new NotFoundException("Product not found");
+
+      if(mediaSetId){
+        const mediaSet=await client.query("select id from product_media_sets where id=$1 and product_id=$2 limit 1",[mediaSetId,productId]);
+        if(!mediaSet.rowCount) throw new BadRequestException("Media set does not belong to this product");
+      }
+
+      if(role==="primary"){
+        await client.query("update product_media set role='gallery' where product_id=$1 and role='primary'",[productId]);
+      }
+
+      const result=await client.query<any>(
+        "insert into product_media(product_id,media_set_id,source_url,alt_text,position,role,storage_provider) values($1,$2,$3,$4,$5,$6,'source-url') returning *",
+        [productId,mediaSetId,sourceUrl,altText,position,role]
+      );
+      return result.rows[0];
+    });
+  }
+
   async createUpload(productId:string,body:any){
     const filename=String(body?.filename||"master.jpg");
     const contentType=String(body?.contentType||"image/jpeg");
