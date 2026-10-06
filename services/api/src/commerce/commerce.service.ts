@@ -168,13 +168,45 @@ export class CommerceService{
   }
 
   async payments(orderId?:string){const s=await this.store();const r=await this.db.query<any>("select * from payment_transactions where store_id=$1 "+(orderId?"and order_id=$2 ":"")+"order by created_at desc limit 500",orderId?[s.id,orderId]:[s.id]);return {items:r.rows};}
-  async recordPayment(orderId:string,body:any){const s=await this.store();const amount=this.num(body?.amount);if(amount<=0)throw new BadRequestException("amount must be positive");const r=await this.db.query<any>("insert into payment_transactions(store_id,order_id,provider,provider_transaction_id,transaction_type,status,amount,currency,metadata) select $1,o.id,$3,$4,$5,$6,$7,o.currency,$8::jsonb from orders o where o.id=$2 and o.store_id=$1 returning *",[s.id,orderId,String(body?.provider||"manual"),body?.providerTransactionId??null,String(body?.transactionType||"capture"),String(body?.status||"succeeded"),amount,JSON.stringify(body?.metadata||{})]);if(!r.rowCount)throw new NotFoundException("Order not found");return r.rows[0];}
+  async recordPayment(orderId:string,body:any){
+    const store=await this.store();const amount=this.num(body?.amount);if(amount<=0)throw new BadRequestException("amount must be positive");
+    return this.db.transaction(async c=>{
+      const order=await c.query<any>("select * from orders where id=$1 and store_id=$2 for update",[orderId,store.id]);if(!order.rowCount)throw new NotFoundException("Order not found");
+      const tx=await c.query<any>("insert into payment_transactions(store_id,order_id,provider,provider_transaction_id,transaction_type,status,amount,currency,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) returning *",[store.id,orderId,String(body?.provider||"manual"),body?.providerTransactionId??null,String(body?.transactionType||"capture"),String(body?.status||"succeeded"),amount,order.rows[0].currency,JSON.stringify(body?.metadata||{})]);
+      const sums=await c.query<any>("select coalesce(sum(amount) filter(where status='succeeded' and transaction_type in ('capture','payment')),0) captured,coalesce(sum(amount) filter(where status='succeeded' and transaction_type='refund'),0) refunded from payment_transactions where order_id=$1",[orderId]);
+      const captured=Number(sums.rows[0].captured||0),refunded=Number(sums.rows[0].refunded||0),total=Number(order.rows[0].total||0),net=Math.max(0,captured-refunded);
+      const status=refunded>=captured&&captured>0?"refunded":refunded>0?"partially_refunded":net>=total&&total>0?"paid":net>0?"partially_paid":"pending";
+      await c.query("update orders set payment_status=$1 where id=$2",[status,orderId]);
+      await c.query("insert into order_events(order_id,event_type,message,metadata) values($1,'payment.updated',$2,$3::jsonb)",[orderId,"Payment ledger updated",JSON.stringify({captured,refunded,net,status})]);
+      await this.logAudit(c,store.id,"payment.recorded","order",orderId,tx.rows[0],{status});
+      return {...tx.rows[0],orderPaymentStatus:status,captured,refunded};
+    });
+  }
 
   async returns(){const s=await this.store();const r=await this.db.query<any>("select r.*,o.order_number from returns r join orders o on o.id=r.order_id where r.store_id=$1 order by r.created_at desc",[s.id]);return {items:r.rows};}
   async createReturn(body:any){const s=await this.store();const orderId=String(body?.orderId||"");if(!orderId)throw new BadRequestException("orderId is required");return this.db.transaction(async c=>{const o=await c.query<any>("select * from orders where id=$1 and store_id=$2",[orderId,s.id]);if(!o.rowCount)throw new NotFoundException("Order not found");const r=await c.query<any>("insert into returns(store_id,order_id,status,return_type,reason,refund_amount,notes) values($1,$2,'requested',$3,$4,$5,$6) returning *",[s.id,orderId,String(body?.returnType||"return"),body?.reason??null,this.num(body?.refundAmount),body?.notes??null]);for(const x of Array.isArray(body?.items)?body.items:[])await c.query("insert into return_items(return_id,order_item_id,quantity,disposition,exchange_variant_id,refund_amount) values($1,$2,$3,$4,$5,$6)",[r.rows[0].id,x.orderItemId,Number(x.quantity||1),String(x.disposition||"restock"),x.exchangeVariantId||null,this.num(x.refundAmount)]);await this.logAudit(c,s.id,"return.requested","return",r.rows[0].id,r.rows[0]);return r.rows[0];});}
 
   async customerAddresses(customerId:string){const r=await this.db.query<any>("select * from customer_addresses where customer_id=$1 order by is_default desc,created_at desc",[customerId]);return {items:r.rows};}
   async addCustomerAddress(customerId:string,body:any){const a=this.address(body);if(!a.line1||!a.city)throw new BadRequestException("Address is incomplete");if(body?.isDefault)await this.db.query("update customer_addresses set is_default=false where customer_id=$1",[customerId]);const r=await this.db.query<any>("insert into customer_addresses(customer_id,label,address_type,is_default,name,phone,line1,line2,city,region,postal_code,country) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *",[customerId,body?.label??null,String(body?.addressType||"shipping"),Boolean(body?.isDefault),body?.name??null,body?.phone??null,a.line1,a.line2||null,a.city,a.region||null,a.postalCode||null,a.country]);return r.rows[0];}
+
+  async customerTags(customerId:string){
+    const store=await this.store();
+    const r=await this.db.query<any>("select t.* from customer_tags t join customer_tag_links l on l.tag_id=t.id where l.customer_id=$1 and t.store_id=$2 order by t.name",[customerId,store.id]);
+    return {items:r.rows};
+  }
+  async setCustomerTags(customerId:string,body:any){
+    const store=await this.store();const names=Array.isArray(body?.tags)?body.tags.map((x:any)=>String(x).trim()).filter(Boolean):[];
+    const customer=await this.db.query("select id from customers where id=$1 and store_id=$2",[customerId,store.id]);if(!customer.rowCount) throw new NotFoundException("Customer not found");
+    await this.db.transaction(async c=>{
+      await c.query("delete from customer_tag_links where customer_id=$1",[customerId]);
+      for(const name of [...new Set(names)] as string[]){
+        const t=await c.query<any>("insert into customer_tags(store_id,name) values($1,$2) on conflict(store_id,name) do update set name=excluded.name returning id",[store.id,name]);
+        await c.query("insert into customer_tag_links(customer_id,tag_id) values($1,$2) on conflict do nothing",[customerId,t.rows[0].id]);
+      }
+      await this.logAudit(c,store.id,"customer.tags.updated","customer",customerId,{tags:names});
+    });
+    return this.customerTags(customerId);
+  }
 
   async suppliers(){const s=await this.store();const r=await this.db.query<any>("select * from suppliers where store_id=$1 order by name",[s.id]);return {items:r.rows};}
   async createSupplier(body:any){const s=await this.store();const name=String(body?.name||"").trim();if(!name)throw new BadRequestException("name is required");const r=await this.db.query<any>("insert into suppliers(store_id,name,email,phone,address,notes) values($1,$2,$3,$4,$5::jsonb,$6) returning *",[s.id,name,body?.email??null,body?.phone??null,JSON.stringify(this.address(body?.address)),body?.notes??null]);return r.rows[0];}
