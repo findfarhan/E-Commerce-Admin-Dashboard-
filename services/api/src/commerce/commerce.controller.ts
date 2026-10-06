@@ -39,7 +39,7 @@ export class CommerceController{
   @Post("suppliers") supplier(@Body() b:any){return this.commerce.createSupplier(b);}
   @Get("purchase-orders") purchaseOrders(){return this.commerce.purchaseOrders();}
   @Post("purchase-orders") purchaseOrder(@Body() b:any){return this.commerce.createPurchaseOrder(b);}
-  @Post("purchase-orders/:id/receive") receive(@Param("id") id:string){return this.commerce.receivePurchaseOrder(id);}
+  @Post("purchase-orders/:id/receive") receive(@Param("id") id:string,@Body() b:any){return this.commerce.receivePurchaseOrder(id,b);}
   @Get("audit") audit(){return this.commerce.audit();}
   @Get("notifications") notifications(){return this.commerce.notifications();}
   @Get("report") report(){return this.commerce.report();}
