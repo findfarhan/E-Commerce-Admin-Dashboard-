@@ -129,7 +129,7 @@ export class ProductsService{
   async listStorefront(){
     const storeId=await this.storeId();
     const products=await this.db.query<any>(
-      "select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price_amount, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory from products p where p.store_id=$1 and p.status='active' and (p.published_at is null or p.published_at<=now()) order by p.created_at",
+      "select p.*, coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) as price_amount, coalesce((select sum(v.inventory) from product_variants v where v.product_id=p.id and v.status='active'),0) as inventory, coalesce((select array_agg(pt.tag order by pt.tag) from product_tags pt where pt.product_id=p.id),'{}'::text[]) as tags from products p where p.store_id=$1 and p.status='active' and (p.published_at is null or p.published_at<=now()) order by p.created_at",
       [storeId]
     );
 
@@ -168,7 +168,7 @@ export class ProductsService{
         featured:p.featured,
         productType:p.product_type||"",
         vendor:p.vendor||"",
-        tags:[],
+        tags:p.tags||[],
       };
     });
   }
