@@ -168,18 +168,38 @@ export class ProductsService{
   }
 
   async updateProduct(id:string,body:any){
+    const storeId=await this.storeId();
+    const current=await this.db.query<any>("select * from products where id=$1 and store_id=$2 limit 1",[id,storeId]);
+    if(!current.rowCount) throw new NotFoundException("Product not found");
+
+    if(body.handle!==undefined){
+      body.handle=String(body.handle).trim().toLowerCase();
+      if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.handle)) throw new BadRequestException("Handle must use lowercase letters, numbers and single hyphens");
+    }
+    if(body.title!==undefined&&!String(body.title).trim()) throw new BadRequestException("Product title is required");
+    if(body.status!==undefined&&!["draft","active","archived"].includes(String(body.status))) throw new BadRequestException("Invalid product status");
+
+    if(body.status==="active"){
+      const activeVariants=await this.db.query<{count:number}>("select count(*)::int as count from product_variants where product_id=$1 and status='active'",[id]);
+      if(Number(activeVariants.rows[0]?.count||0)<1) throw new BadRequestException("Add at least one active variant before publishing the product");
+    }
+
     const allowed=["handle","title","description","status","category","material","tag","featured"] as const;
     const sets:string[]=[];
     const params:any[]=[];
     for(const key of allowed){
       if(body[key]!==undefined){
-        params.push(body[key]);
+        params.push(key==="title"?String(body[key]).trim():body[key]);
         sets.push(key+"=$"+params.length);
       }
     }
     if(!sets.length) return this.getAdminDetail(id);
-    params.push(id);
-    await this.db.query("update products set "+sets.join(",")+",updated_at=now() where id=$"+params.length,params);
+    params.push(id,storeId);
+    const result=await this.db.query<any>(
+      "update products set "+sets.join(",")+",updated_at=now() where id=$"+(params.length-1)+" and store_id=$"+params.length+" returning id",
+      params
+    );
+    if(!result.rowCount) throw new NotFoundException("Product not found");
     return this.getAdminDetail(id);
   }
 
@@ -321,9 +341,22 @@ export class ProductsService{
   }
 
   async archiveVariant(productId:string,variantId:string){
-    const result=await this.db.query<any>("update product_variants set status='draft',updated_at=now() where id=$1 and product_id=$2 returning id,status",[variantId,productId]);
-    if(!result.rowCount) throw new NotFoundException("Variant not found");
-    return result.rows[0];
+    const storeId=await this.storeId();
+    return this.db.transaction(async client=>{
+      const product=await client.query<any>("select id,status from products where id=$1 and store_id=$2 for update",[productId,storeId]);
+      if(!product.rowCount) throw new NotFoundException("Product not found");
+
+      const result=await client.query<any>("update product_variants set status='draft',updated_at=now() where id=$1 and product_id=$2 returning id,status",[variantId,productId]);
+      if(!result.rowCount) throw new NotFoundException("Variant not found");
+
+      if(product.rows[0].status==="active"){
+        const remaining=await client.query<{count:number}>("select count(*)::int as count from product_variants where product_id=$1 and status='active'",[productId]);
+        if(Number(remaining.rows[0]?.count||0)===0){
+          await client.query("update products set status='draft',updated_at=now() where id=$1",[productId]);
+        }
+      }
+      return result.rows[0];
+    });
   }
 
   async generateVariants(productId:string,body:any){
