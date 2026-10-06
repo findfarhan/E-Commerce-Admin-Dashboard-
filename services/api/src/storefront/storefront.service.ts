@@ -68,7 +68,7 @@ export class StorefrontService{
         const actual=mf[key];const valueText=Array.isArray(actual)?actual.join(","):typeof actual==="object"?JSON.stringify(actual):String(actual??"");
         if(!valueText.toLowerCase().includes(expected)) return false;
       }
-      if(q){const hay=[p.name,p.category,p.material,p.tag,p.story,...Object.values(mf)].map(v=>typeof v==="object"?JSON.stringify(v):String(v||""));if(!hay.some(v=>v.toLowerCase().includes(q))) return false;}
+      if(q){const hay=[p.name,p.category,p.material,p.tag,p.story,...(p.tags||[]),...Object.values(mf)].map(v=>typeof v==="object"?JSON.stringify(v):String(v||""));if(!hay.some(v=>v.toLowerCase().includes(q))) return false;}
       return true;
     });
     return filtered.map((p:any)=>({...p,metafields:metafields.get(p.id)||{}}));
