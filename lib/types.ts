@@ -1,7 +1,7 @@
 export type Store={id:string;name:string;domain:string;platform:string;status:"healthy"|"attention"|"offline";currency:string;timezone:string;ordersToday:number;revenueToday:number;customers:number;syncLagSeconds:number;lastSyncAt:string};
 export type Order={id:string;storeId:string;number:string;customer:string;email:string;total:number;status:string;paymentStatus:string;items:number;createdAt:string};
 export type Customer={id:string;storeId:string;name:string;email:string;segment:string;orders:number;lifetimeValue:number;lastOrderAt:string};
-export type Product={id:string;storeId:string;sku:string;name:string;inventory:number;price:number;status:string;sales30d:number;variantCount:number;mediaSetCount:number};
+export type Product={id:string;storeId:string;sku:string;name:string;inventory:number;price:number;status:string;sales30d:number;variantCount:number;mediaSetCount:number;handle?:string;description?:string;category?:string;material?:string;tag?:string;featured?:boolean};
 export type ProductOptionValue={id:string;value:string;swatchColor?:string};
 export type ProductOption={id:string;name:string;isVisual:boolean;values:ProductOptionValue[]};
 export type ProductVariant={id:string;productId:string;sku:string;title:string;price:number;inventory:number;selectedOptions:Record<string,string>;status:"active"|"draft"};
