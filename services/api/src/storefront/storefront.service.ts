@@ -22,7 +22,48 @@ export class StorefrontService{
       .trim();
   }
 
-  products(){return this.productsService.listStorefront();}
+  async products(filters:any={}){
+    const items=await this.productsService.listStorefront();
+    const ids=items.map((x:any)=>x.id);
+    let metafields=new Map<string,Record<string,any>>();
+    if(ids.length){
+      const r=await this.db.query<any>("select resource_id,namespace,key,value from resource_metafields where resource_type='product' and resource_id=any($1::uuid[])",[ids]);
+      metafields=new Map();
+      for(const row of r.rows){
+        const current=metafields.get(row.resource_id)||{};
+        current[row.namespace+"."+row.key]=row.value;
+        metafields.set(row.resource_id,current);
+      }
+    }
+    let collectionHandles:Set<string>|null=null;
+    if(filters.collection){
+      try{
+        const collection=await this.collectionsService.storefrontDetail(String(filters.collection));
+        collectionHandles=new Set(collection.productHandles||[]);
+      }catch{collectionHandles=new Set();}
+    }
+    const min=filters.minPrice!==undefined?Number(filters.minPrice):null;
+    const max=filters.maxPrice!==undefined?Number(filters.maxPrice):null;
+    const q=String(filters.q||"").trim().toLowerCase();
+    const filtered=items.filter((p:any)=>{
+      const mf=metafields.get(p.id)||{};
+      if(filters.category&&String(p.category||"").toLowerCase()!==String(filters.category).toLowerCase()) return false;
+      if(filters.material&&!String(p.material||"").toLowerCase().includes(String(filters.material).toLowerCase())) return false;
+      if(filters.availability==="in_stock"&&p.availability!=="InStock") return false;
+      if(filters.availability==="out_of_stock"&&p.availability!=="OutOfStock") return false;
+      if(min!==null&&Number.isFinite(min)&&Number(p.priceAmount)<min) return false;
+      if(max!==null&&Number.isFinite(max)&&Number(p.priceAmount)>max) return false;
+      if(collectionHandles&&!collectionHandles.has(p.slug)) return false;
+      if(filters.metafield){
+        const parts=String(filters.metafield).split(":");const key=parts.shift()||"";const expected=parts.join(":").toLowerCase();
+        const actual=mf[key];const valueText=Array.isArray(actual)?actual.join(","):typeof actual==="object"?JSON.stringify(actual):String(actual??"");
+        if(!valueText.toLowerCase().includes(expected)) return false;
+      }
+      if(q){const hay=[p.name,p.category,p.material,p.tag,p.story,...Object.values(mf)].map(v=>typeof v==="object"?JSON.stringify(v):String(v||""));if(!hay.some(v=>v.toLowerCase().includes(q))) return false;}
+      return true;
+    });
+    return filtered.map((p:any)=>({...p,metafields:metafields.get(p.id)||{}}));
+  }
 
   async product(handle:string){
     const detail=await this.productsService.getStorefrontDetailByHandle(handle);
