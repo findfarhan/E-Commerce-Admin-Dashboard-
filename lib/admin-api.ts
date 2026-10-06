@@ -41,12 +41,15 @@ export async function getAdminProductDetail(id:string){
   const response=await adminRequest<any>("/v1/admin/products/"+encodeURIComponent(id));
   if(!response) return null;
 
-  const product:Product={
+  const product:any={
     id:response.product.id,storeId:response.product.store_id,sku:response.variants?.[0]?.sku||"—",
     name:response.product.title,inventory:Number(response.product.inventory||0),price:Number(response.product.price_amount||0),
     status:response.product.status,sales30d:0,variantCount:response.variants?.length||0,mediaSetCount:response.mediaSets?.length||0,
     handle:response.product.handle,description:response.product.description||"",category:response.product.category||"",
     material:response.product.material||"",tag:response.product.tag||"",featured:Boolean(response.product.featured),
+    vendor:response.product.vendor||"",productType:response.product.product_type||"",tags:response.product.tags||[],
+    publishedAt:response.product.published_at||null,searchAttributes:response.product.search_attributes||{},
+    taxable:response.product.taxable!==false,weightGrams:response.product.weight_grams===null?null:Number(response.product.weight_grams),
   };
 
   const options:ProductOption[]=(response.options||[]).map((o:any)=>({
@@ -59,6 +62,7 @@ export async function getAdminProductDetail(id:string){
     return {
       id:v.id,productId:v.product_id,sku:v.sku,title:v.title||Object.values(selectedOptions).join(" / "),
       price:Number(v.price||0),inventory:Number(v.inventory||0),selectedOptions,status:v.status==="draft"?"draft":"active",mediaSetId:v.media_set_id||null,
+      costAmount:Number(v.cost_amount||0),weightGrams:v.weight_grams===null?null:Number(v.weight_grams),
     };
   });
 
@@ -69,7 +73,7 @@ export async function getAdminProductDetail(id:string){
     isDefault:Boolean(m.is_default),
   }));
 
-  return {product,options,variants,mediaSets,media,source:"api" as const};
+  return {product,options,variants,mediaSets,media,metafields:response.metafields||[],source:"api" as const};
 }
 
 export async function getAdminOrders():Promise<Order[]>{
