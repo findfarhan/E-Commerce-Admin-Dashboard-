@@ -16,6 +16,7 @@ import {InventoryModule} from "./inventory/inventory.module";
 import {SeoModule} from "./seo/seo.module";
 import {RedirectsModule} from "./redirects/redirects.module";
 import {EngagementModule} from "./engagement/engagement.module";
+import {OperationsModule} from "./operations/operations.module";
 
 @Module({
   imports:[
@@ -29,6 +30,7 @@ import {EngagementModule} from "./engagement/engagement.module";
     SeoModule,
     RedirectsModule,
     EngagementModule,
+    OperationsModule,
     StorefrontModule,
     JobsModule,
     OrdersModule,
