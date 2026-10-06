@@ -107,7 +107,7 @@ export class OperationsService{
       infrastructure:{
         api:"live",
         database:"live",
-        media:process.env.R2_BUCKET_NAME?"configured":"deferred",
+        media:(process.env.MEDIA_STORAGE_PROVIDER||"source-url")==="cloudflare-r2"?"configured":"source-url",
         payment:"cod",
         email:process.env.GMAIL_CLIENT_ID||process.env.EMAIL_PROVIDER_API_KEY?"configured":"not_connected",
         meta:process.env.META_ACCESS_TOKEN?"configured":"not_connected",
@@ -133,11 +133,11 @@ export class OperationsService{
     return {
       url:"https://"+store.domain,
       apiBase:process.env.PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com",
-      status:"connected",
+      status:"api_ready",
       products:Number(productCount.rows[0]?.count||0),
       collections:Number(collectionCount.rows[0]?.count||0),
       paymentMethods:["cod"],
-      mediaProvider:process.env.R2_BUCKET_NAME?"cloudflare-r2":"existing-source-urls",
+      mediaProvider:(process.env.MEDIA_STORAGE_PROVIDER||"source-url")==="cloudflare-r2"?"cloudflare-r2":"source-url",
       endpoints:[
         ["GET","/v1/storefront/products","Product listing"],
         ["GET","/v1/storefront/products/:handle","Product + variants + media"],
