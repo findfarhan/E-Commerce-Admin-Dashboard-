@@ -22,6 +22,12 @@ export class ProductsService{
     return clean||null;
   }
 
+  private descriptionText(value:any){
+    return sanitizeHtml(String(value||""),{allowedTags:[],allowedAttributes:{}})
+      .replace(/\s+/g," ")
+      .trim();
+  }
+
   private async storeId(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
     const result=await this.db.query<{id:string}>("select id from stores where domain=$1 limit 1",[domain]);
@@ -136,7 +142,7 @@ export class ProductsService{
         image:primaryUrl||this.delivery.sourceUrl(primary||{})||"",
         secondaryImage:secondaryUrl||this.delivery.sourceUrl(secondary||{})||primaryUrl||"",
         category:p.category||"Jewelry",
-        story:p.description||"",
+        story:this.descriptionText(p.description),
         material:p.material||"",
         sku:null,
         availability:Number(p.inventory)>0?"InStock":"OutOfStock",

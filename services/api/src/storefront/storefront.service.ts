@@ -4,6 +4,7 @@ import {ProductsService} from "../products/products.service";
 import {SeoService} from "../seo/seo.service";
 import {RedirectsService} from "../redirects/redirects.service";
 import {DatabaseService} from "../database/database.service";
+import sanitizeHtml from "sanitize-html";
 
 @Injectable()
 export class StorefrontService{
@@ -14,6 +15,12 @@ export class StorefrontService{
     private readonly redirectsService:RedirectsService,
     private readonly db:DatabaseService,
   ){}
+
+  private descriptionText(value:any){
+    return sanitizeHtml(String(value||""),{allowedTags:[],allowedAttributes:{}})
+      .replace(/\s+/g," ")
+      .trim();
+  }
 
   products(){return this.productsService.listStorefront();}
 
@@ -32,7 +39,7 @@ export class StorefrontService{
     return {
       id:p.id,slug:p.handle,name:p.title,price:"Rs. "+Number(p.price_amount).toLocaleString("en-PK"),
       priceAmount:Number(p.price_amount),currency:"PKR",tag:p.tag||"",image:primary,secondaryImage:secondary,
-      category:p.category||"Jewelry",story:p.description||"",material:p.material||"",
+      category:p.category||"Jewelry",story:this.descriptionText(p.description),descriptionHtml:p.description||"",material:p.material||"",
       availability:Number(p.inventory)>0?"InStock":"OutOfStock",featured:p.featured,
       options:(detail.options||[]).map((o:any)=>({id:o.id,name:o.name,isVisual:o.is_visual,values:o.values})),
       variants,
