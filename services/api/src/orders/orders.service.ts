@@ -68,6 +68,7 @@ export class OrdersService{
       );
       const customer=await client.query<any>("select email,name from customers where id=$1",[current.rows[0].customer_id]);
       const recipient=customer.rows[0]?.email;
+      await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state) values($1,'admin','order.state_updated','order',$2,$3::jsonb,$4::jsonb)",[storeId,id,JSON.stringify(current.rows[0]),JSON.stringify(updated.rows[0])]);
       if(recipient&&(nextFulfillment==="fulfilled"||trackingNumber)){
         const template=trackingNumber?"tracking_update":"fulfillment";
         await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email',$2,$3,$4,$5::jsonb,'queued')",[storeId,template,recipient,"Order "+current.rows[0].order_number+" "+(trackingNumber?"tracking":"fulfillment"),JSON.stringify({orderId:id,orderNumber:current.rows[0].order_number,trackingCarrier,trackingNumber,trackingUrl,fulfillmentStatus:nextFulfillment})]);
@@ -100,6 +101,7 @@ export class OrdersService{
       const customer=await client.query<any>("select email from customers where id=$1",[order.rows[0].customer_id]);
       if(customer.rows[0]?.email) await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','order_cancellation',$2,$3,$4::jsonb,'queued')",[storeId,customer.rows[0].email,"Order "+order.rows[0].order_number+" canceled",JSON.stringify({orderId:id,orderNumber:order.rows[0].order_number,reason:body?.reason||null})]);
       await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'order_canceled','warning',$2,$3,'order',$4)",[storeId,"Order canceled "+order.rows[0].order_number,String(body?.reason||"Order canceled"),id]);
+      await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state,metadata) values($1,'admin','order.canceled','order',$2,$3::jsonb,$4::jsonb,$5::jsonb)",[storeId,id,JSON.stringify(order.rows[0]),JSON.stringify(updated.rows[0]),JSON.stringify({reason:body?.reason||null})]);
       return {ok:true,idempotent:false,order:updated.rows[0]};
     });
   }
@@ -130,6 +132,7 @@ export class OrdersService{
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.returned',$2,$3::jsonb)",[id,"Order returned and inventory restored",JSON.stringify({reason:body?.reason||null,paymentStatus})]);
       const customer=await client.query<any>("select email from customers where id=$1",[order.rows[0].customer_id]);
       if(customer.rows[0]?.email) await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','return_refund',$2,$3,$4::jsonb,'queued')",[storeId,customer.rows[0].email,"Return / refund for "+order.rows[0].order_number,JSON.stringify({orderId:id,orderNumber:order.rows[0].order_number,paymentStatus,reason:body?.reason||null})]);
+      await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state,metadata) values($1,'admin','order.returned','order',$2,$3::jsonb,$4::jsonb,$5::jsonb)",[storeId,id,JSON.stringify(current),JSON.stringify(updated.rows[0]),JSON.stringify({reason:body?.reason||null})]);
       return {ok:true,idempotent:false,order:updated.rows[0]};
     });
   }
