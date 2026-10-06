@@ -128,7 +128,7 @@ export class StorefrontService{
     return {
       store:{name:"Jewelry Store",currency:"PKR",locale:"en-PK"},
       checkout:{paymentMethods:["cod"],shippingMethods:["standard"]},
-      features:{variants:true,responsiveMedia:true,seo:true,multichannel:true,mediaProvider:"cloudflare",dynamicImageTransforms:Boolean(process.env.CLOUDFLARE_IMAGE_RESIZING_BASE_URL)},
+      features:{variants:true,responsiveMedia:true,seo:true,multichannel:true,mediaProvider:process.env.R2_BUCKET_NAME?"cloudflare-r2":"deferred",dynamicImageTransforms:Boolean(process.env.CLOUDFLARE_IMAGE_RESIZING_BASE_URL)},
     };
   }
 }
