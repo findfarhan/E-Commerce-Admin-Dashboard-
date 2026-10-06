@@ -126,6 +126,64 @@ export class MediaService{
     };
   }
 
+  async update(mediaId:string,body:any){
+    const current=await this.db.query<any>("select * from product_media where id=$1",[mediaId]);
+    if(!current.rowCount) throw new NotFoundException("Media not found");
+    const row=current.rows[0];
+    const role=body?.role===undefined?row.role:String(body.role);
+    if(!["primary","gallery"].includes(role)) throw new BadRequestException("Invalid media role");
+    const focalX=body?.focalX===undefined?Number(row.focal_x??0.5):Number(body.focalX);
+    const focalY=body?.focalY===undefined?Number(row.focal_y??0.5):Number(body.focalY);
+    if(!Number.isFinite(focalX)||focalX<0||focalX>1||!Number.isFinite(focalY)||focalY<0||focalY>1) throw new BadRequestException("Focal point must be between 0 and 1");
+    const position=body?.position===undefined?Number(row.position||0):Number(body.position);
+    if(!Number.isInteger(position)||position<0) throw new BadRequestException("Media position must be a non-negative whole number");
+    const mediaSetId=body?.mediaSetId===undefined?row.media_set_id:(body.mediaSetId||null);
+    if(mediaSetId){
+      const set=await this.db.query<any>("select id from product_media_sets where id=$1 and product_id=$2",[mediaSetId,row.product_id]);
+      if(!set.rowCount) throw new BadRequestException("Media set does not belong to this product");
+    }
+    return this.db.transaction(async client=>{
+      if(role==="primary") await client.query("update product_media set role='gallery' where product_id=$1 and role='primary' and id<>$2",[row.product_id,mediaId]);
+      const result=await client.query<any>(
+        "update product_media set media_set_id=$1,alt_text=$2,position=$3,role=$4,focal_x=$5,focal_y=$6 where id=$7 returning *",
+        [mediaSetId,body?.altText===undefined?row.alt_text:(String(body.altText||"").trim()||null),position,role,focalX,focalY,mediaId]
+      );
+      return result.rows[0];
+    });
+  }
+
+  async reorder(productId:string,body:any){
+    const ids=Array.isArray(body?.mediaIds)?body.mediaIds.map(String):[];
+    if(!ids.length) throw new BadRequestException("mediaIds is required");
+    return this.db.transaction(async client=>{
+      const count=await client.query<any>("select count(*)::int as count from product_media where product_id=$1 and id=any($2::uuid[])",[productId,ids]);
+      if(Number(count.rows[0]?.count||0)!==ids.length) throw new BadRequestException("One or more media items do not belong to this product");
+      let position=0;
+      for(const id of ids) await client.query("update product_media set position=$1 where id=$2 and product_id=$3",[position++,id,productId]);
+      const rows=await client.query<any>("select * from product_media where product_id=$1 order by position,created_at",[productId]);
+      return {items:rows.rows};
+    });
+  }
+
+  async remove(mediaId:string){
+    const result=await this.db.query<any>("select * from product_media where id=$1",[mediaId]);
+    if(!result.rowCount) throw new NotFoundException("Media not found");
+    const media=result.rows[0];
+    const renditions=await this.db.query<any>("select object_key from media_renditions where media_id=$1",[mediaId]);
+    for(const rendition of renditions.rows){
+      if(rendition.object_key) await this.storage.delete(rendition.object_key);
+    }
+    if(media.master_object_key) await this.storage.delete(media.master_object_key);
+    await this.db.query("delete from product_media where id=$1",[mediaId]);
+    if(media.role==="primary"){
+      await this.db.query(
+        "update product_media set role='primary' where id=(select id from product_media where product_id=$1 order by position,created_at limit 1)",
+        [media.product_id]
+      );
+    }
+    return {ok:true,id:mediaId};
+  }
+
   async renditions(mediaId:string){
     const mediaResult=await this.db.query<any>("select * from product_media where id=$1",[mediaId]);
     if(!mediaResult.rowCount) throw new NotFoundException("Media not found");
