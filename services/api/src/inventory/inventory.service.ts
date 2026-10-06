@@ -25,6 +25,8 @@ export class InventoryService{
       if(after<0) throw new BadRequestException("Inventory cannot be negative");
       await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,variantId]);
       await client.query("insert into inventory_movements(store_id,variant_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,'manual_adjustment',$3,$4,$5,$6,$7)",[storeId,variantId,delta,before,after,String(body?.reason||"Manual adjustment"),String(body?.actor||"admin")]);
+      await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state,metadata) values($1,$2,'inventory.adjusted','variant',$3,$4::jsonb,$5::jsonb,$6::jsonb)",[storeId,String(body?.actor||"admin"),variantId,JSON.stringify({inventory:before}),JSON.stringify({inventory:after}),JSON.stringify({delta,reason:String(body?.reason||"Manual adjustment")})]);
+      if(after<=3) await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'low_stock','warning','Low stock',$2,'variant',$3)",[storeId,"Variant "+variantId+" has "+after+" unit(s) remaining",variantId]);
       return {variantId,before,after,delta};
     });
   }
