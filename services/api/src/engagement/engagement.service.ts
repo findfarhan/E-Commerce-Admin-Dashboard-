@@ -26,6 +26,7 @@ export class EngagementService{
       "insert into newsletter_subscribers(store_id,email,status,source) values($1,$2,'subscribed',$3) on conflict(store_id,lower(email)) do update set status='subscribed',source=excluded.source,updated_at=now() returning id,email,status,created_at,updated_at",
       [storeId,email,source]
     );
+    await this.db.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','newsletter_welcome',$2,'Welcome to Jewelry Store',$3::jsonb,'queued')",[storeId,email,JSON.stringify({subscriberId:result.rows[0].id,source})]);
     return {ok:true,subscriber:result.rows[0]};
   }
 
@@ -73,6 +74,8 @@ export class EngagementService{
         String(body?.source||"custom-page").trim().slice(0,80)||"custom-page",
       ]
     );
+    await this.db.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'commission_request','info',$2,$3,'commission',$4)",[storeId,"New commission request from "+name,notes.slice(0,280),result.rows[0].id]);
+    await this.db.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','commission_received',$2,'We received your private commission request',$3::jsonb,'queued')",[storeId,email,JSON.stringify({requestId:result.rows[0].id,name})]);
     return {ok:true,request:{id:result.rows[0].id,status:result.rows[0].status,createdAt:result.rows[0].created_at}};
   }
 
