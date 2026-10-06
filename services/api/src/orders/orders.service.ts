@@ -46,8 +46,26 @@ export class OrdersService{
       const nextStatus=status||current.rows[0].status;
       const nextFulfillment=fulfillment||current.rows[0].fulfillment_status;
       const nextPayment=payment||current.rows[0].payment_status;
-      const updated=await client.query<any>("update orders set status=$1,fulfillment_status=$2,payment_status=$3,notes=coalesce($4,notes) where id=$5 returning *",[nextStatus,nextFulfillment,nextPayment,body?.notes??null,id]);
-      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.updated',$2,$3::jsonb)",[id,"Order state updated",JSON.stringify({status:nextStatus,fulfillmentStatus:nextFulfillment,paymentStatus:nextPayment})]);
+      const trackingCarrier=body?.trackingCarrier!==undefined?String(body.trackingCarrier||"").trim().slice(0,80):(current.rows[0].tracking_carrier||null);
+      const trackingNumber=body?.trackingNumber!==undefined?String(body.trackingNumber||"").trim().slice(0,120):(current.rows[0].tracking_number||null);
+      let trackingUrl=body?.trackingUrl!==undefined?String(body.trackingUrl||"").trim():(current.rows[0].tracking_url||"");
+      if(trackingUrl){
+        try{
+          const parsed=new URL(trackingUrl);
+          if(!["http:","https:"].includes(parsed.protocol)) throw new Error("protocol");
+          trackingUrl=parsed.toString().slice(0,1000);
+        }catch{
+          throw new BadRequestException("Tracking URL must be a valid http(s) link");
+        }
+      }
+      const updated=await client.query<any>(
+        "update orders set status=$1,fulfillment_status=$2,payment_status=$3,notes=coalesce($4,notes),tracking_carrier=$5,tracking_number=$6,tracking_url=$7,fulfilled_at=case when $2='fulfilled' and fulfilled_at is null then now() else fulfilled_at end where id=$8 returning *",
+        [nextStatus,nextFulfillment,nextPayment,body?.notes??null,trackingCarrier||null,trackingNumber||null,trackingUrl||null,id]
+      );
+      await client.query(
+        "insert into order_events(order_id,event_type,message,metadata) values($1,'order.updated',$2,$3::jsonb)",
+        [id,"Order state updated",JSON.stringify({status:nextStatus,fulfillmentStatus:nextFulfillment,paymentStatus:nextPayment,trackingCarrier:trackingCarrier||null,trackingNumber:trackingNumber||null})]
+      );
       return updated.rows[0];
     });
   }
