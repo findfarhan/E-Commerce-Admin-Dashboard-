@@ -29,6 +29,16 @@ export class EngagementService{
     return {ok:true,subscriber:result.rows[0]};
   }
 
+  async unsubscribe(body:any){
+    const storeId=await this.storeId();
+    const email=this.normalizeEmail(body?.email);
+    await this.db.query(
+      "update newsletter_subscribers set status='unsubscribed',updated_at=now() where store_id=$1 and lower(email)=$2",
+      [storeId,email]
+    );
+    return {ok:true};
+  }
+
   async createCommission(body:any){
     const storeId=await this.storeId();
     const name=String(body?.name||"").trim();
