@@ -98,8 +98,9 @@ export class ProductsService{
       };
     });
 
+    const tags=await this.db.query<any>("select tag from product_tags where product_id=$1 order by tag",[product.id]);
     return {
-      product,
+      product:{...product,tags:tags.rows.map((x:any)=>x.tag)},
       options:options.rows,
       variants:variants.rows,
       mediaSets:mediaSets.rows,
@@ -169,16 +170,20 @@ export class ProductsService{
     const productId=randomUUID();
     await this.db.transaction(async client=>{
       await client.query(
-        "insert into products(id,store_id,handle,title,description,status,category,material,tag,featured) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-        [productId,storeId,handle,title,this.sanitizeDescription(body.description),status,body.category??null,body.material??null,body.tag??null,Boolean(body.featured)]
+        "insert into products(id,store_id,handle,title,description,status,category,material,tag,featured,product_type,vendor,published_at,taxable,weight_grams) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+        [productId,storeId,handle,title,this.sanitizeDescription(body.description),status,body.category??null,body.material??null,body.tag??null,Boolean(body.featured),body.productType??null,body.vendor??null,body.publishedAt??null,body.taxable!==false,body.weightGrams===null||body.weightGrams===undefined?null:Number(body.weightGrams)]
       );
       if(hasOpeningVariant){
         const sku=String(body.sku||("JS-"+handle.toUpperCase().replace(/[^A-Z0-9]+/g,"-"))).trim();
         if(!sku) throw new BadRequestException("SKU is required");
         await client.query(
-          "insert into product_variants(product_id,sku,price,inventory,status) values($1,$2,$3,$4,'active')",
-          [productId,sku,price,inventory]
+          "insert into product_variants(product_id,sku,price,inventory,status,cost_price,weight_grams) values($1,$2,$3,$4,'active',$5,$6)",
+          [productId,sku,price,inventory,body.costPrice===undefined||body.costPrice===null?null:Number(body.costPrice),body.variantWeightGrams===undefined||body.variantWeightGrams===null?null:Number(body.variantWeightGrams)]
         );
+      }
+      const tags=Array.isArray(body.tags)?body.tags.map((x:any)=>String(x).trim()).filter(Boolean):[];
+      for(const tag of [...new Set(tags)]){
+        await client.query("insert into product_tags(product_id,tag) values($1,$2) on conflict do nothing",[productId,tag]);
       }
     });
 
@@ -202,7 +207,10 @@ export class ProductsService{
       if(Number(activeVariants.rows[0]?.count||0)<1) throw new BadRequestException("Add at least one active variant before publishing the product");
     }
 
-    const allowed=["handle","title","description","status","category","material","tag","featured"] as const;
+    if(body.productType!==undefined) body.product_type=body.productType;
+    if(body.publishedAt!==undefined) body.published_at=body.publishedAt||null;
+    if(body.weightGrams!==undefined) body.weight_grams=body.weightGrams===null?null:Number(body.weightGrams);
+    const allowed=["handle","title","description","status","category","material","tag","featured","product_type","vendor","published_at","taxable","weight_grams"] as const;
     const sets:string[]=[];
     const params:any[]=[];
     for(const key of allowed){
@@ -218,6 +226,14 @@ export class ProductsService{
       params
     );
     if(!result.rowCount) throw new NotFoundException("Product not found");
+    if(Array.isArray(body.tags)){
+      await this.db.transaction(async client=>{
+        await client.query("delete from product_tags where product_id=$1",[id]);
+        for(const tag of [...new Set(body.tags.map((x:any)=>String(x).trim()).filter(Boolean))] as string[]){
+          await client.query("insert into product_tags(product_id,tag) values($1,$2) on conflict do nothing",[id,tag]);
+        }
+      });
+    }
     return this.getAdminDetail(id);
   }
 
@@ -261,8 +277,8 @@ export class ProductsService{
     const variantId=randomUUID();
     await this.db.transaction(async client=>{
       await client.query(
-        "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id) values($1,$2,$3,$4,$5,$6,$7,$8)",
-        [variantId,productId,String(body.sku).trim(),price,compareAt,inventory,status,body.mediaSetId??null]
+        "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id,cost_price,weight_grams) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [variantId,productId,String(body.sku).trim(),price,compareAt,inventory,status,body.mediaSetId??null,body.costPrice===undefined||body.costPrice===null?null:Number(body.costPrice),body.weightGrams===undefined||body.weightGrams===null?null:Number(body.weightGrams)]
       );
 
       for(const [name,value] of Object.entries(body.selectedOptions as Record<string,string>)){
@@ -427,10 +443,12 @@ export class ProductsService{
     const compareAt=body?.compareAtPrice!==undefined?(body.compareAtPrice===null?null:Number(body.compareAtPrice)):current.compare_at_price;
     const status=body?.status!==undefined?String(body.status):current.status;
     const mediaSetId=body?.mediaSetId!==undefined?(body.mediaSetId||null):current.media_set_id;
+    const costPrice=body?.costPrice!==undefined?(body.costPrice===null?null:Number(body.costPrice)):current.cost_price;
+    const weightGrams=body?.weightGrams!==undefined?(body.weightGrams===null?null:Number(body.weightGrams)):current.weight_grams;
     if(!sku||!Number.isFinite(price)||price<0) throw new BadRequestException("Invalid variant values");
     if(compareAt!==null&&(!Number.isFinite(Number(compareAt))||Number(compareAt)<0)) throw new BadRequestException("Invalid compare-at price");
     if(!["active","draft"].includes(status)) throw new BadRequestException("Invalid variant status");
-    await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,status=$4,media_set_id=$5,updated_at=now() where id=$6",[sku,price,compareAt,status,mediaSetId,variantId]);
+    await this.db.query("update product_variants set sku=$1,price=$2,compare_at_price=$3,status=$4,media_set_id=$5,cost_price=$6,weight_grams=$7,updated_at=now() where id=$8",[sku,price,compareAt,status,mediaSetId,costPrice,weightGrams,variantId]);
     return this.getAdminDetail(productId);
   }
 
