@@ -57,7 +57,7 @@ export class PricingEngineService{
          and (starts_at is null or starts_at<=now())
          and (ends_at is null or ends_at>now())
          and (usage_limit is null or usage_count<usage_limit)
-         and ($2='' or lower(coalesce(code,''))=$2 or discount_type='automatic')
+         and (($2='' and discount_type='automatic') or ($2<>'' and (lower(coalesce(code,''))=$2 or discount_type='automatic')))
        order by case when lower(coalesce(code,''))=$2 then 0 else 1 end,created_at asc`,
       [storeId,normalized]
     );
