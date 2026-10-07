@@ -205,6 +205,25 @@ export class CommerceService{
     return this.db.transaction(async c=>{let subtotal=0;const lines:any[]=[];for(const line of items){const v=await c.query<any>("select v.id,v.product_id,v.sku,v.price,p.title,p.taxable from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2",[line.variantId,s.id]);if(!v.rowCount)throw new NotFoundException("Variant not found");const qty=Number(line.quantity||1),unit=line.unitPrice!==undefined?this.num(line.unitPrice):Number(v.rows[0].price);subtotal+=qty*unit;lines.push({row:v.rows[0],...v.rows[0],qty,unit,lineTotal:qty*unit});}
       const discount=Math.max(0,this.num(body?.discountAmount));const shipping=Math.max(0,this.num(body?.shippingAmount));const ship=this.address(body?.shippingAddress);const bill=this.address(body?.billingAddress||body?.shippingAddress);const taxes=await this.resolveTaxes(c,s.id,ship,subtotal,discount,lines,body);const tax=taxes.total;const total=Math.max(0,subtotal-discount+shipping+taxes.exclusive);const d=await c.query<any>("insert into draft_orders(store_id,customer_id,status,currency,email,phone,shipping_address,billing_address,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,notes,quote_expires_at) values($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning *",[s.id,body?.customerId||null,String(body?.status||"draft"),String(body?.currency||s.currency||"PKR"),body?.email??null,body?.phone??null,JSON.stringify(ship),JSON.stringify(bill),subtotal,discount,shipping,tax,taxes.inclusive,taxes.exclusive,total,body?.notes??null,body?.quoteExpiresAt??null]);for(const x of lines)await c.query("insert into draft_order_items(draft_order_id,product_id,variant_id,title,sku,quantity,unit_price,line_total) values($1,$2,$3,$4,$5,$6,$7,$8)",[d.rows[0].id,x.product_id,x.id,x.title,x.sku,x.qty,x.unit,x.lineTotal]);await this.logAudit(c,s.id,"draft.created","draft_order",d.rows[0].id,d.rows[0]);return d.rows[0];});
   }
+  async sendDraftQuote(id:string){
+    const store=await this.store();
+    return this.db.transaction(async client=>{
+      const result=await client.query<any>("select * from draft_orders where id=$1 and store_id=$2 for update",[id,store.id]);
+      if(!result.rowCount) throw new NotFoundException("Draft order not found");
+      const draft=result.rows[0];
+      if(draft.converted_order_id) throw new ConflictException("Converted drafts cannot be sent as quotes");
+      const recipient=String(draft.email||"").trim().toLowerCase();
+      if(!recipient||!recipient.includes("@")) throw new BadRequestException("Quote requires a valid customer email");
+      const lines=await client.query<any>("select title,sku,quantity,unit_price,line_total from draft_order_items where draft_order_id=$1 order by id",[id]);
+      if(!lines.rowCount) throw new BadRequestException("Quote has no line items");
+      const subject="Jewelry quote";
+      const outbox=await client.query<any>("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','draft_quote',$2,$3,$4::jsonb,'queued') returning id,status",[store.id,recipient,subject,JSON.stringify({draftOrderId:id,currency:draft.currency,total:Number(draft.total||0),subtotal:Number(draft.subtotal||0),discountAmount:Number(draft.discount_amount||0),shippingAmount:Number(draft.shipping_amount||0),taxAmount:Number(draft.tax_amount||0),quoteExpiresAt:draft.quote_expires_at,items:lines.rows.map((x:any)=>({...x,quantity:Number(x.quantity),unit_price:Number(x.unit_price),line_total:Number(x.line_total)}))})]);
+      const updated=await client.query<any>("update draft_orders set status='quote',quote_sent_at=now(),updated_at=now() where id=$1 returning *",[id]);
+      await this.logAudit(client,store.id,"draft.quote_queued","draft_order",id,updated.rows[0],{outboxId:outbox.rows[0].id,recipient});
+      return {draft:updated.rows[0],outbox:outbox.rows[0]};
+    });
+  }
+
   async convertDraft(id:string,body:any){
     const s=await this.store();const d=await this.db.query<any>("select * from draft_orders where id=$1 and store_id=$2",[id,s.id]);if(!d.rowCount)throw new NotFoundException("Draft not found");if(d.rows[0].converted_order_id)throw new ConflictException("Draft already converted");const items=await this.db.query<any>("select variant_id,quantity,unit_price from draft_order_items where draft_order_id=$1",[id]);const order=await this.orderFromBody({...body,customerId:d.rows[0].customer_id,items:items.rows.map((x:any)=>({variantId:x.variant_id,quantity:x.quantity,unitPrice:Number(x.unit_price)})),shippingAddress:d.rows[0].shipping_address,billingAddress:d.rows[0].billing_address,shippingAmount:Number(d.rows[0].shipping_amount),taxAmount:Number(d.rows[0].tax_amount),inclusiveTaxAmount:Number(d.rows[0].inclusive_tax_amount||0),exclusiveTaxAmount:Number(d.rows[0].exclusive_tax_amount||0),notes:d.rows[0].notes},"draft_conversion");await this.db.query("update draft_orders set status='converted',converted_order_id=$1,updated_at=now() where id=$2",[order.id,id]);return order;
   }
