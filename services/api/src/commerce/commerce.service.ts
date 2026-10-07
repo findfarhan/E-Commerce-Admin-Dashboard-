@@ -122,6 +122,29 @@ export class CommerceService{
     let amount=d.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(d.value))/100:d.kind==="fixed"?Number(d.value):0;
     amount=Math.min(eligibleSubtotal,Math.max(0,amount));return {amount,row:d};
   }
+  private async resolveTaxes(client:any,storeId:string,address:any,subtotal:number,discountAmount:number,lines:any[],body:any={}){
+    if(body?.inclusiveTaxAmount!==undefined||body?.exclusiveTaxAmount!==undefined||body?.taxAmount!==undefined){
+      const inclusive=Math.max(0,this.num(body?.inclusiveTaxAmount));
+      const exclusive=body?.exclusiveTaxAmount!==undefined
+        ?Math.max(0,this.num(body.exclusiveTaxAmount))
+        :body?.taxAmount!==undefined?Math.max(0,this.num(body.taxAmount)):0;
+      return {inclusive,exclusive,total:inclusive+exclusive,source:"override"};
+    }
+    const taxableSubtotal=lines.filter((line:any)=>line.row?.taxable!==false).reduce((sum:number,line:any)=>sum+Number(line.lineTotal||0),0);
+    const allocatedDiscount=subtotal>0?discountAmount*(taxableSubtotal/subtotal):0;
+    const taxableBase=Math.max(0,taxableSubtotal-allocatedDiscount);
+    const rules=await client.query("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[storeId,String(address?.country||"Pakistan"),String(address?.region||"")]);
+    let inclusive=0,exclusive=0;
+    for(const rule of (rules as any).rows){
+      const rate=Number(rule.rate||0);
+      if(rule.inclusive) inclusive+=taxableBase*rate/(1+rate);
+      else exclusive+=taxableBase*rate;
+    }
+    inclusive=Math.round(inclusive*100)/100;
+    exclusive=Math.round(exclusive*100)/100;
+    return {inclusive,exclusive,total:inclusive+exclusive,source:"rules"};
+  }
+
   private async orderFromBody(body:any,source="admin_manual"){
     const s=await this.store();const items=Array.isArray(body?.items)?body.items:[];if(!items.length)throw new BadRequestException("At least one item is required");
     return this.db.transaction(async c=>{
