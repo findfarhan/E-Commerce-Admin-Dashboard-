@@ -12,7 +12,7 @@ export class CollectionsService{
     return result.rows[0].id;
   }
 
-  private async smartProductHandles(collection:any){
+  private async smartProductHandles(collection:any,queryer:any=this.db){
     const storeId=collection.store_id||await this.storeId();
     const rules=Array.isArray(collection.rules)?collection.rules:[];
     if(!rules.length) return [];
@@ -36,8 +36,34 @@ export class CollectionsService{
     const join=collection.match_type==="any"?" or ":" and ";
     const sort=String(collection.merchandising?.sort||"newest");
     const order=sort==="title"?"p.title asc":sort==="price_asc"?"coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) asc":sort==="price_desc"?"coalesce((select min(v.price) from product_variants v where v.product_id=p.id and v.status='active'),0) desc":"p.created_at desc";
-    const r=await this.db.query<any>("select p.handle from products p where p.store_id=$1 and p.status='active' and (p.published_at is null or p.published_at<=now()) and ("+clauses.join(join)+") order by "+order,params);
+    const r=await queryer.query("select p.handle from products p where p.store_id=$1 and p.status=\'active\' and (p.published_at is null or p.published_at<=now()) and ("+clauses.join(join)+") order by "+order,params);
     return r.rows.map((x:any)=>x.handle);
+  }
+
+  async productIdsForCollections(collectionIds:string[],candidateProductIds:string[]=[],queryer:any=this.db){
+    if(!collectionIds.length) return [];
+    const storeId=await this.storeId();
+    const collections=await queryer.query("select * from collections where store_id=$1 and id=any($2::uuid[]) and status='active'",[storeId,collectionIds]);
+    const allowed=new Set<string>();
+    for(const collection of collections.rows){
+      if(collection.collection_type==="smart"){
+        const handles=await this.smartProductHandles(collection,queryer);
+        if(handles.length){
+          const params:any[]=[storeId,handles];
+          let sql="select id from products where store_id=$1 and handle=any($2::text[])";
+          if(candidateProductIds.length){params.push(candidateProductIds);sql+=" and id=any($3::uuid[])";}
+          const products=await queryer.query(sql,params);
+          for(const product of products.rows) allowed.add(String(product.id));
+        }
+      }else{
+        const params:any[]=[collection.id];
+        let sql="select product_id from collection_products where collection_id=$1";
+        if(candidateProductIds.length){params.push(candidateProductIds);sql+=" and product_id=any($2::uuid[])";}
+        const products=await queryer.query(sql,params);
+        for(const product of products.rows) allowed.add(String(product.product_id));
+      }
+    }
+    return [...allowed];
   }
 
   async list(){
