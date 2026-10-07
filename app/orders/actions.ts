@@ -42,7 +42,7 @@ export async function returnOrderAction(id:string,formData:FormData){
 export async function editOrderLinesAction(id:string,formData:FormData){
   const items:any[]=[];
   for(let i=0;i<12;i++){const variantId=String(formData.get("variantId_"+i)||"").trim();if(!variantId)continue;items.push({variantId,quantity:Number(formData.get("quantity_"+i)||1),...(String(formData.get("unitPrice_"+i)||"").trim()?{unitPrice:Number(formData.get("unitPrice_"+i))}:{})});}
-  await adminMutation("/v1/admin/commerce/orders/"+id+"/edit",{method:"POST",body:JSON.stringify({items,discountAmount:Number(formData.get("discountAmount")||0),shippingAmount:Number(formData.get("shippingAmount")||0),taxAmount:Number(formData.get("taxAmount")||0),shippingMethod:String(formData.get("shippingMethod")||"manual"),shippingAddress:{line1:String(formData.get("line1")||""),line2:String(formData.get("line2")||""),city:String(formData.get("city")||""),region:String(formData.get("region")||""),postalCode:String(formData.get("postalCode")||""),country:String(formData.get("country")||"Pakistan")},notes:String(formData.get("notes")||"").trim()||null})});
+  await adminMutation("/v1/admin/commerce/orders/"+id+"/edit",{method:"POST",body:JSON.stringify({items,discountAmount:Number(formData.get("discountAmount")||0),shippingAmount:Number(formData.get("shippingAmount")||0),inclusiveTaxAmount:Number(formData.get("inclusiveTaxAmount")||0),exclusiveTaxAmount:Number(formData.get("exclusiveTaxAmount")||0),shippingMethod:String(formData.get("shippingMethod")||"manual"),shippingAddress:{line1:String(formData.get("line1")||""),line2:String(formData.get("line2")||""),city:String(formData.get("city")||""),region:String(formData.get("region")||""),postalCode:String(formData.get("postalCode")||""),country:String(formData.get("country")||"Pakistan")},notes:String(formData.get("notes")||"").trim()||null})});
   revalidatePath("/orders");revalidatePath("/orders/"+id);revalidatePath("/orders/"+id+"/edit");
 }
 export async function createReturnCaseAction(orderId:string,formData:FormData){
@@ -51,3 +51,20 @@ export async function createReturnCaseAction(orderId:string,formData:FormData){
   revalidatePath("/returns");revalidatePath("/orders/"+orderId);
 }
 export async function completeReturnCaseAction(returnId:string){await adminMutation("/v1/admin/commerce/returns/"+returnId+"/complete",{method:"POST",body:"{}"});revalidatePath("/returns");revalidatePath("/orders");}
+
+
+export async function recordPaymentAction(orderId:string,formData:FormData){
+  await adminMutation("/v1/admin/commerce/orders/"+orderId+"/payments",{
+    method:"POST",
+    body:JSON.stringify({
+      provider:String(formData.get("provider")||"manual").trim()||"manual",
+      providerTransactionId:String(formData.get("providerTransactionId")||"").trim()||null,
+      transactionType:String(formData.get("transactionType")||"capture"),
+      status:String(formData.get("transactionStatus")||"succeeded"),
+      amount:Number(formData.get("amount")||0),
+      metadata:{note:String(formData.get("paymentNote")||"").trim()||null},
+    }),
+  });
+  revalidatePath("/orders");
+  revalidatePath("/orders/"+orderId);
+}
