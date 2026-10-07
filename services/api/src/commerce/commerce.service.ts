@@ -1,9 +1,10 @@
 import {BadRequestException,ConflictException,Injectable,NotFoundException} from "@nestjs/common";
 import {DatabaseService} from "../database/database.service";
+import {CollectionsService} from "../collections/collections.service";
 
 @Injectable()
 export class CommerceService{
-  constructor(private readonly db:DatabaseService){}
+  constructor(private readonly db:DatabaseService,private readonly collections:CollectionsService){}
 
   private async store(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
