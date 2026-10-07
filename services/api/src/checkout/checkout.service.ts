@@ -238,6 +238,18 @@ export class CheckoutService{
         locked.push({line,variant,price});
       }
 
+      const locations=await client.query<any>("select id,name from locations where store_id=$1 and active=true order by is_default desc,created_at",[store.id]);
+      let fulfillmentLocationId:string|null=null;
+      for(const location of locations.rows){
+        let canFulfill=true;
+        for(const entry of locked){
+          const level=await client.query<any>("select on_hand from inventory_levels where location_id=$1 and variant_id=$2 for update",[location.id,entry.variant.id]);
+          if(!level.rowCount||Number(level.rows[0].on_hand)<Number(entry.line.quantity)){canFulfill=false;break;}
+        }
+        if(canFulfill){fulfillmentLocationId=location.id;break;}
+      }
+      if(locations.rowCount&&!fulfillmentLocationId) throw new ConflictException("No fulfillment location has enough stock for the complete order");
+
       const email=String(checkout.customer_email).toLowerCase();
       const customerResult=await client.query<any>(
         "insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=excluded.name,phone=excluded.phone returning id,name,email,phone",
@@ -255,8 +267,8 @@ export class CheckoutService{
       const total=Number(checkout.total??Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount));
 
       const orderResult=await client.query<any>(
-        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code) values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19) returning *",
-        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null]
+        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code,fulfillment_location_id) values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19,$20) returning *",
+        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId]
       );
       const order=orderResult.rows[0];
 
@@ -264,6 +276,7 @@ export class CheckoutService{
         const before=Number(entry.variant.inventory);
         const after=before-Number(entry.line.quantity);
         await client.query("insert into order_items(order_id,product_id,variant_id,sku,title,selected_options,quantity,unit_price,line_total) values($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)",[order.id,entry.variant.product_id,entry.variant.id,entry.variant.sku,entry.variant.title,JSON.stringify(entry.line.selected_options||{}),Number(entry.line.quantity),entry.price,entry.price*Number(entry.line.quantity)]);
+        if(fulfillmentLocationId) await client.query("update inventory_levels set on_hand=on_hand-$1,updated_at=now() where location_id=$2 and variant_id=$3",[Number(entry.line.quantity),fulfillmentLocationId,entry.variant.id]);
         await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,entry.variant.id]);
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_sale',$4,$5,$6,$7,'checkout')",[store.id,entry.variant.id,order.id,-Number(entry.line.quantity),before,after,"Order "+orderNumber]);
         if(after<=3){
