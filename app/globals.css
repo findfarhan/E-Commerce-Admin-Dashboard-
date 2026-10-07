@@ -181,3 +181,138 @@ html[data-theme="light"]{
 @media(max-width:1050px){.dash-metrics{grid-template-columns:1fr 1fr}.dash-bottom-grid{grid-template-columns:1fr}.dash-store-meta{display:none}.dash-side-stack{grid-template-columns:1fr}.professional-topbar .global-search{display:none}}
 @media(max-width:760px){.dash-hero{align-items:flex-start;flex-direction:column}.dash-hero-actions{width:100%}.dash-button{flex:1}.dash-store-strip{grid-template-columns:1fr auto}.dash-store-strip>a{display:none}.dash-metrics{grid-template-columns:1fr 1fr}.dash-order-table{overflow:auto}.dash-order-row{min-width:720px}.dash-signal-grid{grid-template-columns:1fr 1fr}.professional-topbar{padding:0 14px}.topbar-context em,.topbar-context span,.topbar-order-button{display:none}}
 @media(max-width:520px){.dash-metrics{grid-template-columns:1fr}.dash-signal-grid{grid-template-columns:1fr}.dash-hero h1{font-size:26px}.dash-card-head{align-items:flex-start}.dash-store-strip{padding:9px 10px}.dash-footer-note{display:none}}
+\n
+/* ===== Admin readability + control sizing pass ===== */
+.app-shell{grid-template-columns:272px minmax(0,1fr)}
+.app-shell .page-content{padding:34px 36px 72px;max-width:1760px}
+.app-shell .professional-sidebar{padding:18px 14px 16px}
+.app-shell .professional-sidebar .admin-brand{padding:8px 10px 20px}
+.app-shell .professional-sidebar .admin-brand>span{width:42px;height:42px;font-size:12px;border-radius:12px}
+.app-shell .professional-sidebar .admin-brand b{font-size:12px;letter-spacing:.11em}
+.app-shell .professional-sidebar .admin-brand small{font-size:9px;letter-spacing:.12em;margin-top:4px}
+.app-shell .sidebar-section{margin-top:18px}
+.app-shell .sidebar-section>p{margin:0 10px 8px;font-size:9px;letter-spacing:.15em}
+.app-shell .professional-sidebar .sidebar-nav{gap:3px}
+.app-shell .professional-sidebar .sidebar-nav a{height:42px;border-radius:10px;padding:0 11px;gap:10px}
+.app-shell .professional-sidebar .sidebar-nav a svg{width:17px;height:17px}
+.app-shell .professional-sidebar .sidebar-nav a span{font-size:12px;font-weight:520}
+.app-shell .infra-state{padding:13px;border-radius:11px;margin-bottom:10px}
+.app-shell .infra-state b{font-size:11px}.app-shell .infra-state small{font-size:9px}
+.app-shell .compact-profile{padding:8px 6px 2px}.app-shell .compact-profile>span{width:34px;height:34px;font-size:10px}
+.app-shell .compact-profile b{font-size:11px}.app-shell .compact-profile small{font-size:9px}
+
+.app-shell .professional-topbar{height:72px;padding:0 28px}
+.app-shell .topbar-context>small{font-size:9px;letter-spacing:.14em}
+.app-shell .topbar-context b{font-size:14px}
+.app-shell .topbar-context em{font-size:11px}
+.app-shell .topbar-actions{gap:10px}
+.app-shell .global-search{height:42px;width:min(420px,32vw);padding:0 12px;border-radius:10px}
+.app-shell .global-search input{font-size:12px}
+.app-shell .global-search kbd{font-size:10px;padding:3px 6px}
+.app-shell .top-icon{width:42px;height:42px;border-radius:10px;font-size:14px}
+.app-shell .topbar-order-button,
+.app-shell .create-button,
+.app-shell .primary-button,
+.app-shell .secondary-button{
+  min-height:42px;height:42px;padding:0 16px;border-radius:9px;font-size:12px;font-weight:650;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;line-height:1;
+}
+.app-shell .topbar-order-button,.app-shell .secondary-button{background:var(--surface);border:1px solid var(--line);box-shadow:none}
+.app-shell .create-button,.app-shell .primary-button{background:linear-gradient(135deg,#8577f2,#6e63d6);box-shadow:0 8px 20px rgba(126,111,232,.16)}
+.app-shell .topbar-order-button:hover,.app-shell .secondary-button:hover{border-color:#354356;background:var(--surface-2)}
+.app-shell .create-button:hover,.app-shell .primary-button:hover{filter:brightness(1.05)}
+
+.app-shell .page-header{align-items:center;margin-bottom:30px}
+.app-shell .page-header p{font-size:10px;letter-spacing:.15em;margin-bottom:10px}
+.app-shell .page-header h1{font-size:36px;line-height:1.1;letter-spacing:-.035em}
+.app-shell .page-header>div>span{font-size:14px;line-height:1.65;margin-top:10px;max-width:780px}
+.app-shell .page-actions{gap:10px;align-items:center}
+
+.app-shell .stat-card{min-height:158px;border-radius:14px;padding:20px}
+.app-shell .stat-card span{font-size:12px}.app-shell .stat-card>strong{font-size:30px;margin:16px 0 5px}
+.app-shell .stat-card>small{font-size:11px}.app-shell .stat-card em{font-size:11px}
+.app-shell .panel{border-radius:14px}
+.app-shell .panel-head{height:auto;min-height:76px;padding:16px 20px}
+.app-shell .panel-head span{font-size:10px;letter-spacing:.13em}
+.app-shell .panel-head h2{font-size:17px;margin-top:5px}
+.app-shell .panel-head>a{font-size:12px}
+.app-shell .health-grid{gap:12px;padding:16px}
+.app-shell .health-card{min-height:120px;border-radius:11px;padding:16px}
+.app-shell .health-card>span{font-size:11px}.app-shell .health-card b{font-size:22px;margin-top:18px}.app-shell .health-card small{font-size:10px}
+.app-shell .data-table th{height:44px;font-size:10px;padding:0 16px}
+.app-shell .data-table td{height:66px;font-size:12px;padding:0 16px}
+.app-shell .data-table td small{font-size:10px;margin-top:3px}
+.app-shell .status-pill{height:28px;padding:0 10px;font-size:10px}
+.app-shell .filter-button{height:38px;font-size:11px;padding:0 13px}
+.app-shell .page-search{height:40px;min-width:300px}.app-shell .page-search input{font-size:12px}
+.app-shell .tag{font-size:10px;padding:5px 8px}
+.app-shell .customer-metric b{font-size:12px}.app-shell .customer-metric small{font-size:10px}
+.app-shell .empty-panel h2{font-size:18px}.app-shell .empty-panel p{font-size:12px}
+.app-shell .activity-item b{font-size:12px}.app-shell .activity-item p,.app-shell .activity-item time{font-size:10px}
+.app-shell .channel-copy b{font-size:12px}.app-shell .channel-copy small{font-size:10px}
+.app-shell .automation-card h3{font-size:14px}.app-shell .automation-card p{font-size:11px}.app-shell .automation-meta{font-size:10px}
+.app-shell .team-card h3{font-size:14px}.app-shell .team-card>span,.app-shell .team-card-footer{font-size:10px}
+.app-shell .settings-nav button{height:42px;font-size:12px}
+.app-shell .settings-section h2{font-size:17px}.app-shell .settings-section>p{font-size:11px}
+.app-shell .field{gap:8px}.app-shell .field label{font-size:11px}
+.app-shell .field input,.app-shell .field select,.app-shell textarea{font-size:12px;min-height:42px}
+.app-shell .integration-item b{font-size:12px}.app-shell .integration-item p{font-size:10px}.app-shell .integration-item button{font-size:11px;padding:8px 12px}
+.app-shell .progress-head span,.app-shell .progress-head b,.app-shell .progress-card small{font-size:10px}
+.app-shell .conversation-copy b,.app-shell .conversation-head b{font-size:12px}
+.app-shell .conversation-copy p,.app-shell .conversation-row time,.app-shell .conversation-head small{font-size:10px}
+.app-shell .message{font-size:12px;line-height:1.6}
+.app-shell .render-free-note,.app-shell .free-tier-chip{font-size:10px}
+.app-shell .store-focus-banner b{font-size:12px}.app-shell .store-focus-banner p{font-size:10px}.app-shell .store-focus-banner>span{font-size:10px}
+
+/* Command center readability */
+.app-shell .dash-eyebrow{font-size:10px}
+.app-shell .dash-hero h1{font-size:36px}.app-shell .dash-hero p{font-size:13px}
+.app-shell .dash-button{height:42px;padding:0 16px;font-size:12px;border-radius:9px}
+.app-shell .dash-store-identity b{font-size:12px}.app-shell .dash-store-identity small{font-size:10px}
+.app-shell .dash-store-meta span,.app-shell .dash-store-strip>a{font-size:10px}
+.app-shell .dash-metric{min-height:156px;padding:17px}.app-shell .dash-metric>span{font-size:11px}
+.app-shell .dash-metric>strong{font-size:29px}.app-shell .dash-metric>p{font-size:10px}
+.app-shell .dash-metric-head small{font-size:9px}
+.app-shell .dash-card-head span{font-size:9px}.app-shell .dash-card-head h2{font-size:16px}
+.app-shell .dash-card-head p,.app-shell .dash-card-head>a{font-size:10px}
+.app-shell .dash-order-header>span{font-size:9px}
+.app-shell .dash-order-number b,.app-shell .dash-customer b{font-size:11px}
+.app-shell .dash-order-number small,.app-shell .dash-customer small{font-size:9px}
+.app-shell .dash-order-total{font-size:11px}
+.app-shell .dash-quick-actions b{font-size:11px}.app-shell .dash-quick-actions small{font-size:9px}
+.app-shell .dash-health-stats b{font-size:16px}.app-shell .dash-health-stats span{font-size:9px}
+.app-shell .dash-signal>span{font-size:10px}.app-shell .dash-signal>b{font-size:24px}.app-shell .dash-signal>small,.app-shell .dash-signal>em{font-size:9px}
+.app-shell .dash-timeline-row b{font-size:11px}.app-shell .dash-timeline-row p,.app-shell .dash-timeline-row time{font-size:9px}
+.app-shell .dash-footer-note{font-size:9px}
+
+/* Commerce page */
+.commerce-page{max-width:1500px}
+.commerce-module-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.commerce-module-card{min-height:160px;padding:20px;border:1px solid var(--line-soft);background:linear-gradient(150deg,var(--panel),color-mix(in srgb,var(--panel-2) 72%,transparent));border-radius:14px;display:flex;flex-direction:column;transition:.18s}
+.commerce-module-card:hover{transform:translateY(-1px);border-color:#344156;background:linear-gradient(150deg,var(--panel-2),var(--panel))}
+.commerce-module-top{display:flex;justify-content:space-between;align-items:center}.commerce-module-top span{font-size:12px;color:var(--muted);font-weight:550}.commerce-module-top em{font-style:normal;font-size:17px;color:var(--muted-2)}
+.commerce-module-card strong{font-size:32px;letter-spacing:-.04em;margin:18px 0 7px}.commerce-module-card p{margin:auto 0 0;font-size:11px;color:var(--muted);line-height:1.55}
+.commerce-financial-panel{border:1px solid var(--line-soft);background:var(--panel);border-radius:14px;overflow:hidden}
+.commerce-section-head{min-height:86px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line-soft)}
+.commerce-section-head>div{display:flex;flex-direction:column}.commerce-section-head span{font-size:10px;letter-spacing:.14em;color:var(--muted-2)}.commerce-section-head h2{font-size:18px;margin:4px 0 0}.commerce-section-head p{font-size:11px;color:var(--muted);margin:4px 0 0}.commerce-section-head>a{font-size:11px;color:var(--accent-2)}
+.commerce-financial-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;padding:18px}
+.commerce-financial-card{min-height:125px;padding:18px;border-right:1px solid var(--line-soft)}.commerce-financial-card:last-child{border-right:0}
+.commerce-financial-card span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.commerce-financial-card strong{display:block;font-size:24px;margin:11px 0 4px}.commerce-financial-card small{font-size:10px;color:var(--muted-2)}
+
+@media(max-width:1250px){
+  .app-shell{grid-template-columns:240px minmax(0,1fr)}
+  .app-shell .professional-sidebar .sidebar-nav a span{font-size:11px}
+  .commerce-module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .commerce-financial-grid{grid-template-columns:1fr 1fr}.commerce-financial-card:nth-child(2){border-right:0}.commerce-financial-card:nth-child(-n+2){border-bottom:1px solid var(--line-soft)}
+}
+@media(max-width:980px){
+  .app-shell .page-content{padding:26px 20px 56px}
+  .app-shell .page-header h1{font-size:32px}
+}
+@media(max-width:680px){
+  .commerce-module-grid,.commerce-financial-grid{grid-template-columns:1fr}
+  .commerce-financial-card{border-right:0;border-bottom:1px solid var(--line-soft)}
+  .commerce-financial-card:last-child{border-bottom:0}
+  .app-shell .page-header>div>span{font-size:12px}
+  .app-shell .page-actions{display:grid;grid-template-columns:1fr 1fr}
+}
