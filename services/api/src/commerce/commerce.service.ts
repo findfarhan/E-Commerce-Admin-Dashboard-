@@ -86,6 +86,50 @@ export class CommerceService{
     const r=await this.db.query<any>("insert into resource_metafields(store_id,resource_type,resource_id,definition_id,namespace,key,value_type,value) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb) on conflict(store_id,resource_type,resource_id,namespace,key) do update set definition_id=excluded.definition_id,value_type=excluded.value_type,value=excluded.value,updated_at=now() returning *",[s.id,resourceType,resourceId,body?.definitionId||null,namespace,key,valueType,JSON.stringify(body?.value)]);return r.rows[0];
   }
 
+  async setLocationActive(id:string,active:boolean){
+    const store=await this.store();
+    return this.db.transaction(async client=>{
+      const current=await client.query<any>("select * from locations where id=$1 and store_id=$2 for update",[id,store.id]);
+      if(!current.rowCount) throw new NotFoundException("Location not found");
+      if(!active&&current.rows[0].is_default){
+        const replacement=await client.query<any>("select id from locations where store_id=$1 and id<>$2 and active=true order by created_at limit 1",[store.id,id]);
+        if(!replacement.rowCount) throw new ConflictException("Create or activate another location before disabling the default location");
+        await client.query("update locations set is_default=true where id=$1",[replacement.rows[0].id]);
+      }
+      const result=await client.query<any>("update locations set active=$1,is_default=case when $1=false then false else is_default end,updated_at=now() where id=$2 returning *",[active,id]);
+      await this.logAudit(client,store.id,active?"location.enabled":"location.disabled","location",id,result.rows[0]);
+      return result.rows[0];
+    });
+  }
+
+  async setDiscountActive(id:string,active:boolean){
+    const store=await this.store();
+    const result=await this.db.query<any>("update discount_codes set active=$1 where id=$2 and store_id=$3 returning *",[active,id,store.id]);
+    if(!result.rowCount) throw new NotFoundException("Discount not found");
+    return result.rows[0];
+  }
+
+  async setShippingZoneActive(id:string,active:boolean){
+    const store=await this.store();
+    const result=await this.db.query<any>("update shipping_zones set active=$1 where id=$2 and store_id=$3 returning *",[active,id,store.id]);
+    if(!result.rowCount) throw new NotFoundException("Shipping zone not found");
+    return result.rows[0];
+  }
+
+  async setShippingRateActive(id:string,active:boolean){
+    const store=await this.store();
+    const result=await this.db.query<any>("update shipping_rates set active=$1 where id=$2 and zone_id in(select id from shipping_zones where store_id=$3) returning *",[active,id,store.id]);
+    if(!result.rowCount) throw new NotFoundException("Shipping rate not found");
+    return result.rows[0];
+  }
+
+  async setTaxRuleActive(id:string,active:boolean){
+    const store=await this.store();
+    const result=await this.db.query<any>("update tax_rules set active=$1 where id=$2 and store_id=$3 returning *",[active,id,store.id]);
+    if(!result.rowCount) throw new NotFoundException("Tax rule not found");
+    return result.rows[0];
+  }
+
   async discounts(){const s=await this.store();const r=await this.db.query<any>("select * from discount_codes where store_id=$1 order by created_at desc",[s.id]);return {items:r.rows};}
   async createDiscount(body:any){
     const s=await this.store();const code=String(body?.code||"").trim().toUpperCase();const kind=String(body?.kind||"percentage");const value=this.num(body?.value);
