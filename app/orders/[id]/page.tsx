@@ -2,19 +2,23 @@ import Link from "next/link";
 import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
 import {StatusPill} from "@/components/status-pill";
-import {getAdminOrderDetail} from "@/lib/admin-api";
-import {cancelOrderAction,returnOrderAction,updateOrderAction} from "../actions";
+import {adminRequest,getAdminOrderDetail} from "@/lib/admin-api";
+import {cancelOrderAction,recordPaymentAction,returnOrderAction,updateOrderAction} from "../actions";
 
 const money=(value:any)=>"Rs. "+Number(value||0).toLocaleString("en-PK");
 
 export default async function OrderDetailPage({params}:{params:Promise<{id:string}>}){
   const {id}=await params;
-  const detail=await getAdminOrderDetail(id);
+  const [detail,payments]=await Promise.all([
+    getAdminOrderDetail(id),
+    adminRequest<any>("/v1/admin/commerce/payments?orderId="+encodeURIComponent(id),0),
+  ]);
   if(!detail) notFound();
   const order=detail.order;
   const update=updateOrderAction.bind(null,id);
   const cancel=cancelOrderAction.bind(null,id);
   const returnOrder=returnOrderAction.bind(null,id);
+  const recordPayment=recordPaymentAction.bind(null,id);
 
   return <>
     <PageHeader eyebrow="ORDER" title={order.order_number} description="Payment, fulfillment, customer, item and operational history in one record.">
@@ -50,6 +54,30 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
           {order.is_gift&&<div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--line)"}}><span className="tag">GIFT ORDER</span><h3 style={{margin:"12px 0 6px"}}>Private gift message</h3><p>{order.gift_message||"No message supplied."}</p></div>}
         </section>
       </article>
+    </section>
+
+    <section className="dashboard-grid lower">
+      <article className="panel">
+        <div className="panel-head"><div><span>PAYMENT LEDGER</span><h2>Transactions</h2></div></div>
+        <div className="activity-list">
+          {(payments?.items||[]).map((tx:any)=><div className="activity-item" key={tx.id}><span>•</span><div><b>{tx.transaction_type} · {money(tx.amount)}</b><p>{tx.provider} · {tx.provider_transaction_id||"No provider reference"}</p></div><em>{tx.status}</em></div>)}
+          {!(payments?.items||[]).length&&<div className="activity-item"><span>•</span><div><b>No payment transactions</b><p>COD or pending orders may not have ledger entries yet.</p></div></div>}
+        </div>
+      </article>
+      <form action={recordPayment} className="panel settings-panel">
+        <section className="settings-section">
+          <h2>Record transaction</h2>
+          <div className="field-grid">
+            <label className="field"><span>Type</span><select name="transactionType"><option value="capture">Payment / capture</option><option value="payment">Payment</option><option value="refund">Refund</option></select></label>
+            <label className="field"><span>Status</span><select name="transactionStatus"><option value="succeeded">Succeeded</option><option value="failed">Failed</option><option value="pending">Pending</option></select></label>
+            <label className="field"><span>Amount</span><input name="amount" type="number" min="0.01" step="0.01" required/></label>
+            <label className="field"><span>Provider</span><input name="provider" defaultValue="manual" placeholder="manual / stripe / gateway"/></label>
+            <label className="field"><span>Provider transaction ID</span><input name="providerTransactionId"/></label>
+            <label className="field" style={{gridColumn:"1/-1"}}><span>Note</span><input name="paymentNote"/></label>
+          </div>
+          <button className="primary-button">Record payment transaction</button>
+        </section>
+      </form>
     </section>
 
     <section className="dashboard-grid lower">
