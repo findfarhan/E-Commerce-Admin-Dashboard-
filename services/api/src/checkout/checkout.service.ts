@@ -234,14 +234,14 @@ export class CheckoutService{
       let subtotal=0;
       const locked:any[]=[];
       for(const line of groupedLines.values()){
-        const variantResult=await client.query<any>("select v.id,v.sku,v.price,v.inventory,v.status,p.id as product_id,p.title,p.status as product_status from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 for update",[line.variant_id,store.id]);
+        const variantResult=await client.query<any>("select v.id,v.sku,v.price,v.inventory,v.status,v.weight_grams,p.id as product_id,p.title,p.status as product_status,p.taxable,p.weight_grams as product_weight_grams from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 for update",[line.variant_id,store.id]);
         if(!variantResult.rowCount) throw new ConflictException("A variant no longer exists");
         const variant=variantResult.rows[0];
         if(variant.status!=="active"||variant.product_status!=="active") throw new ConflictException(variant.sku+" is no longer available");
         if(Number(variant.inventory)<Number(line.quantity)) throw new ConflictException(variant.sku+" no longer has enough stock");
         const price=Number(variant.price);
         subtotal+=price*Number(line.quantity);
-        locked.push({line,variant,price});
+        locked.push({line,variant,price,lineTotal:price*Number(line.quantity)});
       }
 
       const locations=await client.query<any>("select id,name from locations where store_id=$1 and active=true order by is_default desc,created_at",[store.id]);
@@ -256,6 +256,63 @@ export class CheckoutService{
       }
       if(locations.rowCount&&!fulfillmentLocationId) throw new ConflictException("No fulfillment location has enough stock for the complete order");
 
+      const shippingAddress=checkout.shipping_address||{};
+      const totalWeight=locked.reduce((sum:number,entry:any)=>sum+Number(entry.line.quantity)*Number(entry.variant.weight_grams??entry.variant.product_weight_grams??0),0);
+      const zoneCount=await client.query<any>("select count(*)::int as count from shipping_zones where store_id=$1 and active=true",[store.id]);
+      const zone=await client.query<any>("select z.id,z.name from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by ((cardinality(z.cities)>0)::int*4+(cardinality(z.regions)>0)::int*2+(cardinality(z.countries)>0)::int) desc,z.created_at limit 1",[store.id,String(shippingAddress.country||"Pakistan"),String(shippingAddress.region||""),String(shippingAddress.city||"")]);
+      if(Number(zoneCount.rows[0]?.count||0)>0&&!zone.rowCount) throw new ConflictException("Delivery is no longer available for this address");
+      let finalShippingMethod=String(checkout.shipping_method||"standard");
+      let shippingAmount=0;
+      if(zone.rowCount){
+        const rates=await client.query<any>("select * from shipping_rates where zone_id=$1 and active=true order by created_at",[zone.rows[0].id]);
+        const eligible=rates.rows.filter((r:any)=>(r.minimum_order===null||subtotal>=Number(r.minimum_order))&&(r.maximum_order===null||subtotal<=Number(r.maximum_order))&&(r.minimum_weight_grams===null||totalWeight>=Number(r.minimum_weight_grams))&&(r.maximum_weight_grams===null||totalWeight<=Number(r.maximum_weight_grams)));
+        if(!eligible.length) throw new ConflictException("No shipping rate is currently available for this order");
+        const requested=finalShippingMethod.toLowerCase();
+        const selected=eligible.find((r:any)=>String(r.service_code||"").toLowerCase()===requested||String(r.name||"").toLowerCase()===requested)||eligible[0];
+        finalShippingMethod=String(selected.service_code||selected.name||finalShippingMethod);
+        shippingAmount=selected.rate_type==="free"?0:Number(selected.amount||0);
+      }
+
+      let discountRow:any=null;
+      let discountAmount=0;
+      if(checkout.discount_code){
+        const discountResult=await client.query<any>("select * from discount_codes where store_id=$1 and code=$2 for update",[store.id,String(checkout.discount_code).toUpperCase()]);
+        discountRow=discountResult.rows[0]||null;
+        if(!discountRow||discountRow.active!==true||(discountRow.starts_at&&new Date(discountRow.starts_at)>new Date())||(discountRow.ends_at&&new Date(discountRow.ends_at)<new Date())) throw new ConflictException("Discount is no longer available; refresh checkout");
+        if(discountRow.minimum_order!==null&&subtotal<Number(discountRow.minimum_order)) throw new ConflictException("Order no longer meets the discount minimum");
+        if(discountRow.usage_limit!==null&&Number(discountRow.usage_count)>=Number(discountRow.usage_limit)) throw new ConflictException("Discount usage limit has been reached");
+        let eligibleSubtotal=subtotal;
+        if(discountRow.applies_to==="product"&&Array.isArray(discountRow.product_ids)&&discountRow.product_ids.length){
+          const allowed=new Set(discountRow.product_ids.map(String));
+          eligibleSubtotal=locked.filter((x:any)=>allowed.has(String(x.variant.product_id))).reduce((sum:number,x:any)=>sum+Number(x.lineTotal),0);
+        }else if(discountRow.applies_to==="collection"&&Array.isArray(discountRow.collection_ids)&&discountRow.collection_ids.length){
+          const productIds=[...new Set(locked.map((x:any)=>String(x.variant.product_id)))];
+          const memberships=await client.query<any>("select distinct product_id from collection_products where collection_id=any($1::uuid[]) and product_id=any($2::uuid[])",[discountRow.collection_ids,productIds]);
+          const allowed=new Set(memberships.rows.map((x:any)=>String(x.product_id)));
+          eligibleSubtotal=locked.filter((x:any)=>allowed.has(String(x.variant.product_id))).reduce((sum:number,x:any)=>sum+Number(x.lineTotal),0);
+        }
+        discountAmount=discountRow.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(discountRow.value))/100:discountRow.kind==="fixed"?Math.min(eligibleSubtotal,Number(discountRow.value)):0;
+        discountAmount=Math.round(Math.max(0,discountAmount)*100)/100;
+        if(discountRow.kind==="free_shipping") shippingAmount=0;
+      }
+
+      const taxableSubtotal=locked.filter((x:any)=>x.variant.taxable!==false).reduce((sum:number,x:any)=>sum+Number(x.lineTotal),0);
+      const taxableDiscount=subtotal>0?discountAmount*(taxableSubtotal/subtotal):0;
+      const taxableBase=Math.max(0,taxableSubtotal-taxableDiscount);
+      const taxRules=await client.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,String(shippingAddress.country||"Pakistan"),String(shippingAddress.region||"")]);
+      let inclusiveTaxAmount=0,exclusiveTaxAmount=0;
+      for(const rule of taxRules.rows){
+        const rate=Number(rule.rate||0);
+        if(rule.inclusive) inclusiveTaxAmount+=taxableBase*rate/(1+rate);
+        else exclusiveTaxAmount+=taxableBase*rate;
+      }
+      inclusiveTaxAmount=Math.round(inclusiveTaxAmount*100)/100;
+      exclusiveTaxAmount=Math.round(exclusiveTaxAmount*100)/100;
+      const taxAmount=Math.round((inclusiveTaxAmount+exclusiveTaxAmount)*100)/100;
+      const total=Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount);
+
+      await client.query("update checkout_sessions set subtotal=$1,discount_amount=$2,shipping_amount=$3,tax_amount=$4,inclusive_tax_amount=$5,exclusive_tax_amount=$6,total=$7,shipping_method=$8,updated_at=now() where id=$9",[subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,finalShippingMethod,id]);
+
       const email=String(checkout.customer_email).toLowerCase();
       const customerResult=await client.query<any>(
         "insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=excluded.name,phone=excluded.phone returning id,name,email,phone",
@@ -265,16 +322,9 @@ export class CheckoutService{
 
       const numberResult=await client.query<{value:string}>("select 'JS-'||lpad(nextval('jewelry_order_number_seq')::text,6,'0') as value");
       const orderNumber=numberResult.rows[0].value;
-      const discountAmount=Number(checkout.discount_amount||0);
-      const shippingAmount=Number(checkout.shipping_amount||0);
-      const taxAmount=Number(checkout.tax_amount||0);
-      const inclusiveTaxAmount=Number(checkout.inclusive_tax_amount||0);
-      const exclusiveTaxAmount=Number(checkout.exclusive_tax_amount||0);
-      const total=Number(checkout.total??Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount));
-
       const orderResult=await client.query<any>(
         "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code,fulfillment_location_id) values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19,$20) returning *",
-        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),checkout.shipping_method||"standard",Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId]
+        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),finalShippingMethod,Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId]
       );
       const order=orderResult.rows[0];
 
@@ -290,12 +340,9 @@ export class CheckoutService{
         }
       }
 
-      if(checkout.discount_code){
-        const d=await client.query<any>("select id from discount_codes where store_id=$1 and code=$2 for update",[store.id,checkout.discount_code]);
-        if(d.rowCount){
-          await client.query("update discount_codes set usage_count=usage_count+1 where id=$1",[d.rows[0].id]);
-          await client.query("insert into discount_redemptions(discount_id,order_id,customer_id,amount) values($1,$2,$3,$4)",[d.rows[0].id,order.id,customer.id,discountAmount]);
-        }
+      if(discountRow){
+        await client.query("update discount_codes set usage_count=usage_count+1 where id=$1",[discountRow.id]);
+        await client.query("insert into discount_redemptions(discount_id,order_id,customer_id,amount) values($1,$2,$3,$4)",[discountRow.id,order.id,customer.id,discountAmount]);
       }
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift),discountCode:checkout.discount_code||null})]);
       await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[store.id,"New order "+orderNumber,"New storefront order for "+order.currency+" "+Number(order.total).toLocaleString(),order.id]);
