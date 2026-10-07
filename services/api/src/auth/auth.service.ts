@@ -33,6 +33,23 @@ export class AuthService{
     const sig=createHmac("sha256",this.secret()).update(body).digest("base64url");
     return body+"."+sig;
   }
+
+  verifyToken(token:string){
+    try{
+      const [body,sig]=String(token||"").split(".");
+      if(!body||!sig) throw new UnauthorizedException("Invalid session");
+      const expected=createHmac("sha256",this.secret()).update(body).digest("base64url");
+      const a=Buffer.from(sig),b=Buffer.from(expected);
+      if(a.length!==b.length||!timingSafeEqual(a,b)) throw new UnauthorizedException("Invalid session");
+      const payload=JSON.parse(Buffer.from(body,"base64url").toString("utf8"));
+      if(!payload?.sub||!payload?.exp||Number(payload.exp)<Math.floor(Date.now()/1000)) throw new UnauthorizedException("Session expired");
+      return payload as {sub:string;email:string;name?:string;permissions:string[];roles:string[];iat:number;exp:number};
+    }catch(error){
+      if(error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException("Invalid session");
+    }
+  }
+
   private async permissions(userId:string){
     const r=await this.db.query<any>("select r.id,r.name,r.permissions from admin_roles r join admin_user_roles ur on ur.role_id=r.id where ur.user_id=$1 order by r.name",[userId]);
     const permissions=[...new Set(r.rows.flatMap((x:any)=>x.permissions||[]))];
