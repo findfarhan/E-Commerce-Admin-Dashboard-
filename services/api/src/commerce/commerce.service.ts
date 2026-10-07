@@ -265,9 +265,58 @@ export class CommerceService{
   }
 
   async returns(){const s=await this.store();const r=await this.db.query<any>("select r.*,o.order_number from returns r join orders o on o.id=r.order_id where r.store_id=$1 order by r.created_at desc",[s.id]);return {items:r.rows};}
-  async createReturn(body:any){const s=await this.store();const orderId=String(body?.orderId||"");if(!orderId)throw new BadRequestException("orderId is required");return this.db.transaction(async c=>{const o=await c.query<any>("select * from orders where id=$1 and store_id=$2",[orderId,s.id]);if(!o.rowCount)throw new NotFoundException("Order not found");const r=await c.query<any>("insert into returns(store_id,order_id,status,return_type,reason,refund_amount,notes) values($1,$2,'requested',$3,$4,$5,$6) returning *",[s.id,orderId,String(body?.returnType||"return"),body?.reason??null,this.num(body?.refundAmount),body?.notes??null]);for(const x of Array.isArray(body?.items)?body.items:[])await c.query("insert into return_items(return_id,order_item_id,quantity,disposition,exchange_variant_id,refund_amount) values($1,$2,$3,$4,$5,$6)",[r.rows[0].id,x.orderItemId,Number(x.quantity||1),String(x.disposition||"restock"),x.exchangeVariantId||null,this.num(x.refundAmount)]);
-      await c.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'return_request','warning','Return / exchange opened',$2,'return',$3)",[s.id,"Return case opened for order "+o.rows[0].order_number,r.rows[0].id]);
-      await this.logAudit(c,s.id,"return.requested","return",r.rows[0].id,r.rows[0]);return r.rows[0];});}
+  async createReturn(body:any){
+    const store=await this.store();
+    const orderId=String(body?.orderId||"");
+    const returnType=String(body?.returnType||"return");
+    const requested=Array.isArray(body?.items)?body.items:[];
+    if(!orderId) throw new BadRequestException("orderId is required");
+    if(!["return","exchange"].includes(returnType)) throw new BadRequestException("Invalid return type");
+    if(!requested.length) throw new BadRequestException("Select at least one order item to return or exchange");
+    return this.db.transaction(async client=>{
+      const order=await client.query<any>("select * from orders where id=$1 and store_id=$2 for update",[orderId,store.id]);
+      if(!order.rowCount) throw new NotFoundException("Order not found");
+      if(order.rows[0].status==="canceled") throw new ConflictException("Canceled orders cannot be returned");
+      if(!["fulfilled","returned"].includes(String(order.rows[0].fulfillment_status))) throw new ConflictException("Only fulfilled orders can enter the return workflow");
+
+      const validated:any[]=[];
+      let requestedRefund=0;
+      for(const raw of requested){
+        const orderItemId=String(raw?.orderItemId||"");
+        const quantity=Number(raw?.quantity||0);
+        const disposition=String(raw?.disposition||"restock");
+        const exchangeVariantId=raw?.exchangeVariantId?String(raw.exchangeVariantId):null;
+        const lineRefund=Math.max(0,this.num(raw?.refundAmount));
+        if(!orderItemId||!Number.isInteger(quantity)||quantity<1) throw new BadRequestException("Return quantities must be positive whole numbers");
+        if(!["restock","damaged","exchange"].includes(disposition)) throw new BadRequestException("Invalid return disposition");
+        if(disposition==="exchange"&&!exchangeVariantId) throw new BadRequestException("Exchange disposition requires an exchange variant");
+
+        const item=await client.query<any>("select * from order_items where id=$1 and order_id=$2 limit 1",[orderItemId,orderId]);
+        if(!item.rowCount) throw new BadRequestException("Return item does not belong to this order");
+        const prior=await client.query<any>("select coalesce(sum(ri.quantity),0)::int as quantity from return_items ri join returns r on r.id=ri.return_id where ri.order_item_id=$1 and r.status<>'rejected'",[orderItemId]);
+        const available=Number(item.rows[0].quantity)-Number(prior.rows[0]?.quantity||0);
+        if(quantity>available) throw new ConflictException("Return quantity exceeds the remaining returnable quantity for "+item.rows[0].sku);
+        const maxRefund=Number(item.rows[0].unit_price||0)*quantity;
+        if(lineRefund>maxRefund+0.01) throw new BadRequestException("Line refund cannot exceed the returned line value");
+        if(exchangeVariantId){
+          const exchange=await client.query<any>("select v.id from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 and v.status='active'",[exchangeVariantId,store.id]);
+          if(!exchange.rowCount) throw new BadRequestException("Exchange variant is not available");
+        }
+        requestedRefund+=lineRefund;
+        validated.push({orderItemId,quantity,disposition,exchangeVariantId,lineRefund});
+      }
+
+      const caseRefund=body?.refundAmount!==undefined?Math.max(0,this.num(body.refundAmount)):requestedRefund;
+      if(caseRefund>Number(order.rows[0].total||0)+0.01) throw new BadRequestException("Return refund cannot exceed the order total");
+      const result=await client.query<any>("insert into returns(store_id,order_id,status,return_type,reason,refund_amount,notes) values($1,$2,'requested',$3,$4,$5,$6) returning *",[store.id,orderId,returnType,body?.reason??null,caseRefund,body?.notes??null]);
+      for(const item of validated){
+        await client.query("insert into return_items(return_id,order_item_id,quantity,disposition,exchange_variant_id,refund_amount) values($1,$2,$3,$4,$5,$6)",[result.rows[0].id,item.orderItemId,item.quantity,item.disposition,item.exchangeVariantId,item.lineRefund]);
+      }
+      await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'return_request','warning','Return / exchange opened',$2,'return',$3)",[store.id,"Return case opened for order "+order.rows[0].order_number,result.rows[0].id]);
+      await this.logAudit(client,store.id,"return.requested","return",result.rows[0].id,result.rows[0],{itemCount:validated.length});
+      return result.rows[0];
+    });
+  }
 
   async customerAddresses(customerId:string){const r=await this.db.query<any>("select * from customer_addresses where customer_id=$1 order by is_default desc,created_at desc",[customerId]);return {items:r.rows};}
   async addCustomerAddress(customerId:string,body:any){const a=this.address(body);if(!a.line1||!a.city)throw new BadRequestException("Address is incomplete");if(body?.isDefault)await this.db.query("update customer_addresses set is_default=false where customer_id=$1",[customerId]);const r=await this.db.query<any>("insert into customer_addresses(customer_id,label,address_type,is_default,name,phone,line1,line2,city,region,postal_code,country) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *",[customerId,body?.label??null,String(body?.addressType||"shipping"),Boolean(body?.isDefault),body?.name??null,body?.phone??null,a.line1,a.line2||null,a.city,a.region||null,a.postalCode||null,a.country]);return r.rows[0];}
