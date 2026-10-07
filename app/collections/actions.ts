@@ -1,5 +1,5 @@
 "use server";
-function collectionRules(formData:FormData){const rules:any[]=[];for(let i=0;i<5;i++){const field=String(formData.get("ruleField_"+i)||"").trim();const value=String(formData.get("ruleValue_"+i)||"").trim();if(!field||!value)continue;rules.push({field,operator:String(formData.get("ruleOperator_"+i)||"equals"),value});}return rules;}
+function collectionRules(formData:FormData){const rules:any[]=[];for(let i=0;i<8;i++){const field=String(formData.get("ruleField_"+i)||"").trim();const value=String(formData.get("ruleValue_"+i)||"").trim();if(!field||!value)continue;rules.push({field,operator:String(formData.get("ruleOperator_"+i)||"equals"),value});}return rules;}
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {adminMutation} from "@/lib/admin-server";
@@ -23,6 +23,26 @@ export async function createCollectionAction(formData:FormData){
       merchandising:{sort:String(formData.get("merchandisingSort")||"manual")},
     }),
   });
+  const productIds=formData.getAll("productIds").map(String);
+  if(String(formData.get("collectionType")||"manual")==="manual"&&productIds.length){
+    await adminMutation("/v1/admin/collections/"+result.id+"/products",{method:"PUT",body:JSON.stringify({productIds})});
+  }
+  const seoTitle=String(formData.get("seoTitle")||"").trim();
+  const metaDescription=String(formData.get("metaDescription")||"").trim();
+  if(seoTitle||metaDescription){
+    await adminMutation("/v1/admin/seo/collection/"+encodeURIComponent(result.id),{
+      method:"PUT",
+      body:JSON.stringify({
+        title:seoTitle||null,
+        metaDescription:metaDescription||null,
+        canonicalPath:"/collections/"+String(formData.get("handle")||"").trim(),
+        index:true,
+        follow:true,
+        schemaType:"CollectionPage",
+        metadata:{},
+      }),
+    });
+  }
   revalidatePath("/collections");
   redirect("/collections/"+result.id);
 }
@@ -38,6 +58,12 @@ export async function updateCollectionAction(id:string,formData:FormData){
       imageUrl:String(formData.get("imageUrl")||"").trim()||null,
       status:String(formData.get("status")||"active"),
       position:Number(formData.get("position")||0),
+      collectionType:String(formData.get("collectionType")||"manual"),
+      matchType:String(formData.get("matchType")||"all"),
+      rules:collectionRules(formData),
+      publishAt:String(formData.get("publishAt")||"").trim()||null,
+      unpublishAt:String(formData.get("unpublishAt")||"").trim()||null,
+      merchandising:{sort:String(formData.get("merchandisingSort")||"manual")},
     }),
   });
   const productIds=formData.getAll("productIds").map(String);

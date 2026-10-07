@@ -109,7 +109,17 @@ export async function createPurchaseOrderAction(formData:FormData){
 }
 export async function receivePurchaseOrderAction(id:string){await adminMutation("/v1/admin/commerce/purchase-orders/"+id+"/receive",{method:"POST",body:"{}"});revalidatePath("/purchasing");revalidatePath("/products");}
 export async function createMetafieldDefinitionAction(formData:FormData){
-  await adminMutation("/v1/admin/commerce/metafield-definitions",{method:"POST",body:JSON.stringify({resourceType:"product",namespace:String(formData.get("namespace")||"custom"),key:String(formData.get("key")||"").trim(),name:String(formData.get("name")||"").trim(),valueType:String(formData.get("valueType")||"text"),filterable:formData.get("filterable")==="on",searchable:formData.get("searchable")==="on"})});revalidatePath("/metafields");
+  await adminMutation("/v1/admin/commerce/metafield-definitions",{method:"POST",body:JSON.stringify({
+    resourceType:"product",
+    namespace:String(formData.get("namespace")||"custom").trim()||"custom",
+    key:String(formData.get("key")||"").trim(),
+    name:String(formData.get("name")||"").trim(),
+    description:String(formData.get("description")||"").trim()||null,
+    valueType:String(formData.get("valueType")||"text"),
+    filterable:formData.get("filterable")==="on",
+    searchable:formData.get("searchable")==="on"
+  })});
+  revalidatePath("/metafields");
 }
 
 
