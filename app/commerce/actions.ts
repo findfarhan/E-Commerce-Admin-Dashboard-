@@ -37,6 +37,48 @@ export async function createDraftOrderAction(formData:FormData){
     notes:String(formData.get("notes")||"").trim()||null,quoteExpiresAt:String(formData.get("quoteExpiresAt")||"").trim()||null
   })});revalidatePath("/draft-orders");
 }
+export async function submitDraftOrderBuilderAction(formData:FormData){
+  const intent=String(formData.get("submitIntent")||"draft");
+  const customerId=String(formData.get("customerId")||"").trim()||null;
+  const email=String(formData.get("email")||"").trim()||null;
+  const phone=String(formData.get("phone")||"").trim()||null;
+  const customerName=String(formData.get("customerName")||"").trim()||null;
+  const draft:any=await adminMutation("/v1/admin/commerce/draft-orders",{
+    method:"POST",
+    body:JSON.stringify({
+      status:"draft",
+      customerId,
+      customer:email?{name:customerName,email,phone}:null,
+      email,
+      phone,
+      items:lines(formData),
+      shippingAddress:address(formData,"shipping_"),
+      billingAddress:address(formData,"shipping_"),
+      discountAmount:Number(formData.get("discountAmount")||0),
+      shippingAmount:Number(formData.get("shippingAmount")||0),
+      ...(String(formData.get("taxAmount")||"").trim()?{taxAmount:Number(formData.get("taxAmount"))}:{}),
+      notes:String(formData.get("notes")||"").trim()||null,
+      quoteExpiresAt:String(formData.get("quoteExpiresAt")||"").trim()||null,
+    }),
+  });
+
+  revalidatePath("/draft-orders");
+  if(intent==="draft") redirect("/draft-orders");
+
+  const order:any=await adminMutation("/v1/admin/commerce/draft-orders/"+draft.id+"/convert",{
+    method:"POST",
+    body:JSON.stringify({
+      paymentMethod:String(formData.get("paymentMethod")||"cod"),
+      paymentStatus:intent==="paid"?"paid":"pending",
+      shippingMethod:"manual",
+      locationId:String(formData.get("locationId")||"").trim()||null,
+    }),
+  });
+  revalidatePath("/orders");
+  revalidatePath("/draft-orders");
+  redirect("/orders/"+order.id);
+}
+
 export async function sendDraftQuoteAction(id:string){
   await adminMutation("/v1/admin/commerce/draft-orders/"+id+"/send",{method:"POST",body:"{}"});
   revalidatePath("/draft-orders");
