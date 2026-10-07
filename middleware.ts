@@ -4,20 +4,6 @@ function unauthorized(message="Authentication required"){
   return new NextResponse(message,{status:401,headers:{"WWW-Authenticate":'Basic realm="Jewelry Control", charset="UTF-8"',"Cache-Control":"no-store"}});
 }
 function forbidden(){return new NextResponse("You do not have permission to access this area.",{status:403,headers:{"Cache-Control":"no-store"}});}
-function b64urlToBytes(value:string){
-  const base=value.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(value.length/4)*4,"=");
-  const raw=atob(base);return Uint8Array.from(raw,c=>c.charCodeAt(0));
-}
-async function sessionPayload(token:string,secret:string){
-  try{
-    const [body,sig]=token.split(".");if(!body||!sig)return null;
-    const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
-    const ok=await crypto.subtle.verify("HMAC",key,b64urlToBytes(sig),new TextEncoder().encode(body));if(!ok)return null;
-    const json=new TextDecoder().decode(b64urlToBytes(body));const payload=JSON.parse(json);
-    if(!payload?.exp||Number(payload.exp)<Math.floor(Date.now()/1000))return null;
-    return payload as {sub:string;email:string;name?:string;permissions?:string[];roles?:string[];exp:number};
-  }catch{return null;}
-}
 function requiredPermission(path:string){
   if(path.startsWith("/team")||path.startsWith("/settings")||path.startsWith("/audit")) return "admin";
   if(path.startsWith("/products")||path.startsWith("/collections")||path.startsWith("/metafields")||path.startsWith("/api/media")) return "catalog";
@@ -45,18 +31,22 @@ export async function middleware(request:NextRequest){
   const path=request.nextUrl.pathname;
   if(path==="/login"||path.startsWith("/login/")||path==="/setup"||path.startsWith("/setup/")) return secureHeaders(NextResponse.next());
 
-  const secret=process.env.ADMIN_SESSION_SECRET||process.env.ADMIN_API_KEY||"";
   const token=request.cookies.get("jc_session")?.value;
-  if(token&&secret){
-    const session=await sessionPayload(token,secret);
-    if(session){
-      const permission=requiredPermission(path);
-      if(!authorized(session.permissions||[],permission,request.method)) return forbidden();
-      const headers=new Headers(request.headers);
-      headers.set("x-admin-user-id",session.sub);
-      headers.set("x-admin-user-email",session.email);
-      return secureHeaders(NextResponse.next({request:{headers}}));
-    }
+  if(token){
+    try{
+      const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
+      const verification=await fetch(apiBase+"/v1/admin/auth/session",{headers:{Authorization:"Bearer "+token},cache:"no-store"});
+      if(verification.ok){
+        const result=await verification.json();
+        const session=result.user||{};
+        const permission=requiredPermission(path);
+        if(!authorized(session.permissions||[],permission,request.method)) return forbidden();
+        const headers=new Headers(request.headers);
+        headers.set("x-admin-user-id",String(session.sub||""));
+        headers.set("x-admin-user-email",String(session.email||""));
+        return secureHeaders(NextResponse.next({request:{headers}}));
+      }
+    }catch{}
   }
 
   const username=process.env.ADMIN_UI_USERNAME;
