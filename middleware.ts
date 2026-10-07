@@ -1,8 +1,5 @@
 import {NextRequest,NextResponse} from "next/server";
 
-function unauthorized(message="Authentication required"){
-  return new NextResponse(message,{status:401,headers:{"WWW-Authenticate":'Basic realm="Jewelry Control", charset="UTF-8"',"Cache-Control":"no-store"}});
-}
 function forbidden(){return new NextResponse("You do not have permission to access this area.",{status:403,headers:{"Cache-Control":"no-store"}});}
 function requiredPermission(path:string){
   if(path.startsWith("/team")||path.startsWith("/settings")||path.startsWith("/audit")) return "admin";
@@ -49,19 +46,16 @@ export async function middleware(request:NextRequest){
     }catch{}
   }
 
-  const username=process.env.ADMIN_UI_USERNAME;
-  const password=process.env.ADMIN_UI_PASSWORD;
-  if(!username||!password){
-    if(process.env.NODE_ENV!=="production") return secureHeaders(NextResponse.next());
-    return new NextResponse("Admin UI authentication is not configured.",{status:503,headers:{"Cache-Control":"no-store"}});
+  if(path.startsWith("/api/")){
+    return new NextResponse(JSON.stringify({error:"Authentication required"}),{
+      status:401,
+      headers:{"Content-Type":"application/json","Cache-Control":"no-store"}
+    });
   }
-  const auth=request.headers.get("authorization");
-  if(!auth?.startsWith("Basic ")) return unauthorized();
-  try{
-    const decoded=atob(auth.slice(6));const separator=decoded.indexOf(":");
-    const suppliedUser=separator>=0?decoded.slice(0,separator):"";const suppliedPassword=separator>=0?decoded.slice(separator+1):"";
-    if(suppliedUser!==username||suppliedPassword!==password) return unauthorized("Invalid credentials");
-  }catch{return unauthorized("Invalid authorization header");}
-  return secureHeaders(NextResponse.next());
+
+  const loginUrl=request.nextUrl.clone();
+  loginUrl.pathname="/login";
+  loginUrl.searchParams.set("next",path);
+  return secureHeaders(NextResponse.redirect(loginUrl));
 }
 export const config={matcher:["/((?!_next/static|_next/image|favicon.ico|robots.txt).*)"]};
