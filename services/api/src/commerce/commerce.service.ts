@@ -240,19 +240,27 @@ export class CommerceService{
   async payments(orderId?:string){const s=await this.store();const r=await this.db.query<any>("select * from payment_transactions where store_id=$1 "+(orderId?"and order_id=$2 ":"")+"order by created_at desc limit 500",orderId?[s.id,orderId]:[s.id]);return {items:r.rows};}
   async recordPayment(orderId:string,body:any){
     const store=await this.store();const amount=this.num(body?.amount);if(amount<=0)throw new BadRequestException("amount must be positive");
+    const transactionType=String(body?.transactionType||"capture");const transactionStatus=String(body?.status||"succeeded");const provider=String(body?.provider||"manual");const providerRef=String(body?.providerTransactionId||"").trim()||null;
+    if(!["capture","payment","refund"].includes(transactionType)) throw new BadRequestException("Invalid payment transaction type");
+    if(!["succeeded","failed","pending"].includes(transactionStatus)) throw new BadRequestException("Invalid payment transaction status");
     return this.db.transaction(async c=>{
       const order=await c.query<any>("select * from orders where id=$1 and store_id=$2 for update",[orderId,store.id]);if(!order.rowCount)throw new NotFoundException("Order not found");
-      const tx=await c.query<any>("insert into payment_transactions(store_id,order_id,provider,provider_transaction_id,transaction_type,status,amount,currency,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) returning *",[store.id,orderId,String(body?.provider||"manual"),body?.providerTransactionId??null,String(body?.transactionType||"capture"),String(body?.status||"succeeded"),amount,order.rows[0].currency,JSON.stringify(body?.metadata||{})]);
+      if(providerRef){const duplicate=await c.query<any>("select * from payment_transactions where store_id=$1 and provider=$2 and provider_transaction_id=$3 limit 1",[store.id,provider,providerRef]);if(duplicate.rowCount)return {...duplicate.rows[0],idempotent:true};}
+      const before=await c.query<any>("select coalesce(sum(amount) filter(where status='succeeded' and transaction_type in ('capture','payment')),0) captured,coalesce(sum(amount) filter(where status='succeeded' and transaction_type='refund'),0) refunded from payment_transactions where order_id=$1",[orderId]);
+      const beforeCaptured=Number(before.rows[0].captured||0),beforeRefunded=Number(before.rows[0].refunded||0),orderTotal=Number(order.rows[0].total||0),beforeNet=Math.max(0,beforeCaptured-beforeRefunded);
+      if(transactionStatus==="succeeded"&&["capture","payment"].includes(transactionType)&&amount>Math.max(0,orderTotal-beforeNet)+0.01) throw new ConflictException("Payment exceeds the remaining order balance");
+      if(transactionStatus==="succeeded"&&transactionType==="refund"&&amount>Math.max(0,beforeCaptured-beforeRefunded)+0.01) throw new ConflictException("Refund exceeds captured payment");
+      const tx=await c.query<any>("insert into payment_transactions(store_id,order_id,provider,provider_transaction_id,transaction_type,status,amount,currency,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) returning *",[store.id,orderId,provider,providerRef,transactionType,transactionStatus,amount,order.rows[0].currency,JSON.stringify(body?.metadata||{})]);
       const sums=await c.query<any>("select coalesce(sum(amount) filter(where status='succeeded' and transaction_type in ('capture','payment')),0) captured,coalesce(sum(amount) filter(where status='succeeded' and transaction_type='refund'),0) refunded from payment_transactions where order_id=$1",[orderId]);
       const captured=Number(sums.rows[0].captured||0),refunded=Number(sums.rows[0].refunded||0),total=Number(order.rows[0].total||0),net=Math.max(0,captured-refunded);
       const status=refunded>=captured&&captured>0?"refunded":refunded>0?"partially_refunded":net>=total&&total>0?"paid":net>0?"partially_paid":"pending";
       await c.query("update orders set payment_status=$1 where id=$2",[status,orderId]);
-      await c.query("insert into order_events(order_id,event_type,message,metadata) values($1,'payment.updated',$2,$3::jsonb)",[orderId,"Payment ledger updated",JSON.stringify({captured,refunded,net,status})]);
-      if(String(body?.status||"succeeded")!=="succeeded"){
+      await c.query("insert into order_events(order_id,event_type,message,metadata) values($1,'payment.updated',$2,$3::jsonb)",[orderId,"Payment ledger updated",JSON.stringify({captured,refunded,net,status,transactionType,transactionStatus})]);
+      if(transactionStatus==="failed"){
         await c.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'failed_payment','critical','Payment failed',$2,'order',$3)",[store.id,"A payment transaction failed for order "+order.rows[0].order_number,orderId]);
       }
       await this.logAudit(c,store.id,"payment.recorded","order",orderId,tx.rows[0],{status});
-      return {...tx.rows[0],orderPaymentStatus:status,captured,refunded};
+      return {...tx.rows[0],orderPaymentStatus:status,captured,refunded,idempotent:false};
     });
   }
 
