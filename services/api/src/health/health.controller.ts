@@ -31,10 +31,29 @@ export class HealthController{
           to_regclass('public.newsletter_subscribers') is not null as subscribers,
           to_regclass('public.seo_documents') is not null as seo_documents,
           to_regclass('public.url_redirects') is not null as redirects,
+          to_regclass('public.locations') is not null as locations,
+          to_regclass('public.inventory_levels') is not null as inventory_levels,
+          to_regclass('public.metafield_definitions') is not null as metafield_definitions,
+          to_regclass('public.resource_metafields') is not null as resource_metafields,
+          to_regclass('public.draft_orders') is not null as draft_orders,
+          to_regclass('public.discount_codes') is not null as discounts,
+          to_regclass('public.shipping_zones') is not null as shipping_zones,
+          to_regclass('public.shipping_rates') is not null as shipping_rates,
+          to_regclass('public.tax_rules') is not null as tax_rules,
+          to_regclass('public.payment_transactions') is not null as payment_transactions,
+          to_regclass('public.returns') is not null as returns,
+          to_regclass('public.suppliers') is not null as suppliers,
+          to_regclass('public.purchase_orders') is not null as purchase_orders,
+          to_regclass('public.audit_log') is not null as audit_log,
+          to_regclass('public.notifications') is not null as notifications,
+          to_regclass('public.message_outbox') is not null as message_outbox,
+          to_regclass('public.admin_users') is not null as admin_users,
           exists(select 1 from information_schema.columns where table_schema='public' and table_name='checkout_sessions' and column_name='terms_accepted_at') as checkout_consent,
           exists(select 1 from information_schema.columns where table_schema='public' and table_name='orders' and column_name='tracking_number') as order_tracking,
           exists(select 1 from information_schema.columns where table_schema='public' and table_name='orders' and column_name='is_gift') as gift_orders,
-          exists(select 1 from information_schema.columns where table_schema='public' and table_name='custom_commission_requests' and column_name='reference_url') as commission_reference
+          exists(select 1 from information_schema.columns where table_schema='public' and table_name='custom_commission_requests' and column_name='reference_url') as commission_reference,
+          exists(select 1 from information_schema.columns where table_schema='public' and table_name='orders' and column_name='inclusive_tax_amount') as inclusive_tax_breakdown,
+          exists(select 1 from information_schema.columns where table_schema='public' and table_name='orders' and column_name='exclusive_tax_amount') as exclusive_tax_breakdown
       `);
 
       const counts=await this.db.query<any>(`
@@ -52,7 +71,10 @@ export class HealthController{
           (select count(*)::int from products p where p.status='active' and not exists(select 1 from product_variants v where v.product_id=p.id and v.status='active')) as active_products_without_variants,
           (select count(*)::int from products p where p.status='active' and not exists(select 1 from product_media pm where pm.product_id=p.id)) as active_products_without_media,
           (select count(*)::int from checkout_sessions where status='completed' and completed_order_id is null) as completed_checkout_without_order,
-          (select count(*)::int from orders o where abs(coalesce(o.total,0)-(coalesce(o.subtotal,0)+coalesce(o.shipping_amount,0)))>0.01) as order_total_mismatch
+          (select count(*)::int from inventory_levels where on_hand<0 or reserved<0) as negative_location_inventory,
+          (select count(*)::int from product_variants v where exists(select 1 from inventory_levels il where il.variant_id=v.id) and v.inventory<>(select coalesce(sum(il.on_hand),0)::int from inventory_levels il where il.variant_id=v.id)) as inventory_level_mismatch,
+          (select count(*)::int from orders o where abs(coalesce(o.total,0)-(coalesce(o.subtotal,0)-coalesce(o.discount_amount,0)+coalesce(o.shipping_amount,0)+coalesce(o.exclusive_tax_amount,0)))>0.01) as order_total_mismatch,
+          (select count(*)::int from draft_orders d where abs(coalesce(d.total,0)-(coalesce(d.subtotal,0)-coalesce(d.discount_amount,0)+coalesce(d.shipping_amount,0)+coalesce(d.exclusive_tax_amount,0)))>0.01) as draft_total_mismatch
       `);
 
       const flags=schema.rows[0]||{};
@@ -87,7 +109,7 @@ export class HealthController{
       ok:database.ok===true&&commerce.ok===true&&integrity.ok===true,
       service:"jewelry-commerce-api",
       runtime:"NestJS + Fastify",
-      version:"0.4.0",
+      version:"0.5.0",
       database,
       commerce,
       integrity,
