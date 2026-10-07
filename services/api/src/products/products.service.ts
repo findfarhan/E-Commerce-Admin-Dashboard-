@@ -197,10 +197,12 @@ export class ProductsService{
       if(hasOpeningVariant){
         const sku=String(body.sku||("JS-"+handle.toUpperCase().replace(/[^A-Z0-9]+/g,"-"))).trim();
         if(!sku) throw new BadRequestException("SKU is required");
-        await client.query(
-          "insert into product_variants(product_id,sku,price,inventory,status,cost_price,weight_grams) values($1,$2,$3,$4,'active',$5,$6)",
+        const insertedVariant=await client.query<any>(
+          "insert into product_variants(product_id,sku,price,inventory,status,cost_price,weight_grams) values($1,$2,$3,$4,'active',$5,$6) returning id",
           [productId,sku,price,inventory,body.costPrice===undefined||body.costPrice===null?null:Number(body.costPrice),body.variantWeightGrams===undefined||body.variantWeightGrams===null?null:Number(body.variantWeightGrams)]
         );
+        const defaultLocation=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[storeId]);
+        if(defaultLocation.rowCount) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do nothing",[defaultLocation.rows[0].id,insertedVariant.rows[0].id,inventory]);
       }
       const tags=Array.isArray(body.tags)?body.tags.map((x:any)=>String(x).trim()).filter(Boolean):[];
       for(const tag of [...new Set(tags)]){
@@ -305,6 +307,11 @@ export class ProductsService{
         "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id,cost_price,weight_grams) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         [variantId,productId,String(body.sku).trim(),price,compareAt,inventory,status,body.mediaSetId??null,body.costPrice===undefined||body.costPrice===null?null:Number(body.costPrice),body.weightGrams===undefined||body.weightGrams===null?null:Number(body.weightGrams)]
       );
+      const productStore=await client.query<any>("select store_id from products where id=$1 limit 1",[productId]);
+      if(productStore.rowCount){
+        const defaultLocation=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[productStore.rows[0].store_id]);
+        if(defaultLocation.rowCount) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do nothing",[defaultLocation.rows[0].id,variantId,inventory]);
+      }
 
       for(const [name,value] of Object.entries(body.selectedOptions as Record<string,string>)){
         const found=await client.query<{id:string}>(
@@ -387,9 +394,11 @@ export class ProductsService{
       for(const variant of variants.rows){
         const newVariantId=randomUUID();
         await client.query(
-          "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id) values($1,$2,$3,$4,$5,0,'draft',$6)",
-          [newVariantId,newProductId,String(variant.sku)+"-COPY-"+skuToken,variant.price,variant.compare_at_price,variant.media_set_id?mediaSetMap.get(variant.media_set_id)||null:null]
+          "insert into product_variants(id,product_id,sku,price,compare_at_price,inventory,status,media_set_id,cost_price,weight_grams) values($1,$2,$3,$4,$5,0,'draft',$6,$7,$8)",
+          [newVariantId,newProductId,String(variant.sku)+"-COPY-"+skuToken,variant.price,variant.compare_at_price,variant.media_set_id?mediaSetMap.get(variant.media_set_id)||null:null,variant.cost_price,variant.weight_grams]
         );
+        const defaultLocation=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[storeId]);
+        if(defaultLocation.rowCount) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,0,0) on conflict(location_id,variant_id) do nothing",[defaultLocation.rows[0].id,newVariantId]);
         const selected=await client.query<any>("select option_value_id from variant_option_values where variant_id=$1",[variant.id]);
         for(const selectedValue of selected.rows){
           const newValueId=valueMap.get(selectedValue.option_value_id);
