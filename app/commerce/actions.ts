@@ -21,7 +21,8 @@ export async function createManualOrderAction(formData:FormData){
   const result:any=await adminMutation("/v1/admin/commerce/orders",{method:"POST",body:JSON.stringify({
     customer:{name:String(formData.get("customerName")||"").trim(),email:String(formData.get("customerEmail")||"").trim(),phone:String(formData.get("customerPhone")||"").trim()},
     items:lines(formData),shippingAddress:address(formData,"shipping_"),billingAddress:address(formData,"shipping_"),
-    discountCode:String(formData.get("discountCode")||"").trim()||null,shippingAmount:Number(formData.get("shippingAmount")||0),taxAmount:Number(formData.get("taxAmount")||0),
+    discountCode:String(formData.get("discountCode")||"").trim()||null,shippingAmount:Number(formData.get("shippingAmount")||0),
+    ...(String(formData.get("taxAmount")||"").trim()?{taxAmount:Number(formData.get("taxAmount"))}:{}),
     shippingMethod:String(formData.get("shippingMethod")||"manual"),paymentMethod:String(formData.get("paymentMethod")||"cod"),paymentStatus:String(formData.get("paymentStatus")||"pending"),
     paidAmount:Number(formData.get("paidAmount")||0),locationId:String(formData.get("locationId")||"").trim()||null,notes:String(formData.get("notes")||"").trim()||null
   })});
@@ -31,7 +32,8 @@ export async function createDraftOrderAction(formData:FormData){
   await adminMutation("/v1/admin/commerce/draft-orders",{method:"POST",body:JSON.stringify({
     status:String(formData.get("status")||"draft"),email:String(formData.get("email")||"").trim()||null,phone:String(formData.get("phone")||"").trim()||null,
     items:lines(formData),shippingAddress:address(formData,"shipping_"),billingAddress:address(formData,"shipping_"),
-    discountAmount:Number(formData.get("discountAmount")||0),shippingAmount:Number(formData.get("shippingAmount")||0),taxAmount:Number(formData.get("taxAmount")||0),
+    discountAmount:Number(formData.get("discountAmount")||0),shippingAmount:Number(formData.get("shippingAmount")||0),
+    ...(String(formData.get("taxAmount")||"").trim()?{taxAmount:Number(formData.get("taxAmount"))}:{}),
     notes:String(formData.get("notes")||"").trim()||null,quoteExpiresAt:String(formData.get("quoteExpiresAt")||"").trim()||null
   })});revalidatePath("/draft-orders");
 }
