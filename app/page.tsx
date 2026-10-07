@@ -1,4 +1,6 @@
 import Link from "next/link";
+import {cookies} from "next/headers";
+import {redirect} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
 import {StatusPill} from "@/components/status-pill";
 import {getAdminDashboard,getAdminOrders,getAdminProducts} from "@/lib/admin-api";
@@ -6,6 +8,9 @@ import {getAdminDashboard,getAdminOrders,getAdminProducts} from "@/lib/admin-api
 const money=(n:number)=>"Rs. "+n.toLocaleString("en-PK");
 
 export default async function Dashboard(){
+  const jar=await cookies();
+  if(!jar.get("jc_session")?.value) redirect("/login");
+
   const [summary,orders,products]=await Promise.all([
     getAdminDashboard(),
     getAdminOrders(),
