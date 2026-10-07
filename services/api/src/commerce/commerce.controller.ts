@@ -1,4 +1,4 @@
-import {Body,Controller,Get,Param,Post,Query,UseGuards} from "@nestjs/common";
+import {Body,Controller,Get,Param,Patch,Post,Query,UseGuards} from "@nestjs/common";
 import {AdminKeyGuard} from "../common/admin-key.guard";
 import {CommerceService} from "./commerce.service";
 
@@ -10,6 +10,7 @@ export class CommerceController{
   @Get("order-catalog") orderCatalog(){return this.commerce.orderCatalog();}
   @Get("locations") locations(){return this.commerce.locations();}
   @Post("locations") createLocation(@Body() b:any){return this.commerce.createLocation(b);}
+  @Patch("locations/:id/active") locationActive(@Param("id") id:string,@Body() b:any){return this.commerce.setLocationActive(id,Boolean(b?.active));}
   @Post("locations/:locationId/variants/:variantId/adjust") adjust(@Param("locationId") l:string,@Param("variantId") v:string,@Body() b:any){return this.commerce.adjustLocationStock(l,v,b);}
   @Get("metafield-definitions") defs(@Query("resourceType") t?:string){return this.commerce.metafieldDefinitions(t||"product");}
   @Post("metafield-definitions") createDef(@Body() b:any){return this.commerce.createMetafieldDefinition(b);}
@@ -17,10 +18,14 @@ export class CommerceController{
   @Post("metafields/:resourceType/:resourceId") upsertMetafield(@Param("resourceType") t:string,@Param("resourceId") id:string,@Body() b:any){return this.commerce.upsertMetafield(t,id,b);}
   @Get("discounts") discounts(){return this.commerce.discounts();}
   @Post("discounts") createDiscount(@Body() b:any){return this.commerce.createDiscount(b);}
+  @Patch("discounts/:id/active") discountActive(@Param("id") id:string,@Body() b:any){return this.commerce.setDiscountActive(id,Boolean(b?.active));}
   @Get("shipping") shipping(){return this.commerce.shipping();}
   @Post("shipping/zones") shippingZone(@Body() b:any){return this.commerce.createShippingZone(b);}
+  @Patch("shipping/zones/:id/active") shippingZoneActive(@Param("id") id:string,@Body() b:any){return this.commerce.setShippingZoneActive(id,Boolean(b?.active));}
+  @Patch("shipping/rates/:id/active") shippingRateActive(@Param("id") id:string,@Body() b:any){return this.commerce.setShippingRateActive(id,Boolean(b?.active));}
   @Get("taxes") taxes(){return this.commerce.taxes();}
   @Post("taxes") tax(@Body() b:any){return this.commerce.createTaxRule(b);}
+  @Patch("taxes/:id/active") taxActive(@Param("id") id:string,@Body() b:any){return this.commerce.setTaxRuleActive(id,Boolean(b?.active));}
   @Post("orders") manualOrder(@Body() b:any){return this.commerce.createManualOrder(b);}
   @Post("orders/:id/edit") editOrder(@Param("id") id:string,@Body() b:any){return this.commerce.editOrder(id,b);}
   @Get("draft-orders") drafts(){return this.commerce.drafts();}
