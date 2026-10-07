@@ -275,13 +275,19 @@ export class CommerceService{
   async suppliers(){const s=await this.store();const r=await this.db.query<any>("select * from suppliers where store_id=$1 order by name",[s.id]);return {items:r.rows};}
   async createSupplier(body:any){const s=await this.store();const name=String(body?.name||"").trim();if(!name)throw new BadRequestException("name is required");const r=await this.db.query<any>("insert into suppliers(store_id,name,email,phone,address,notes) values($1,$2,$3,$4,$5::jsonb,$6) returning *",[s.id,name,body?.email??null,body?.phone??null,JSON.stringify(this.address(body?.address)),body?.notes??null]);return r.rows[0];}
   async purchaseOrders(){const s=await this.store();const r=await this.db.query<any>("select po.*,s.name supplier_name,l.name location_name from purchase_orders po left join suppliers s on s.id=po.supplier_id left join locations l on l.id=po.location_id where po.store_id=$1 order by po.created_at desc",[s.id]);return {items:r.rows};}
-  async createPurchaseOrder(body:any){const s=await this.store();const lines=Array.isArray(body?.items)?body.items:[];if(!lines.length)throw new BadRequestException("items are required");return this.db.transaction(async c=>{let subtotal=0;for(const x of lines)subtotal+=Number(x.quantity||0)*this.num(x.unitCost);const p=await c.query<any>("insert into purchase_orders(store_id,supplier_id,location_id,status,currency,subtotal,expected_at,notes) values($1,$2,$3,'draft',$4,$5,$6,$7) returning *",[s.id,body?.supplierId||null,body?.locationId||null,String(body?.currency||s.currency||"PKR"),subtotal,body?.expectedAt??null,body?.notes??null]);for(const x of lines)await c.query("insert into purchase_order_items(purchase_order_id,variant_id,quantity,unit_cost) values($1,$2,$3,$4)",[p.rows[0].id,x.variantId,Number(x.quantity),this.num(x.unitCost)]);return p.rows[0];});}
+  async createPurchaseOrder(body:any){const s=await this.store();const lines=Array.isArray(body?.items)?body.items:[];if(!lines.length)throw new BadRequestException("items are required");return this.db.transaction(async c=>{let subtotal=0;for(const x of lines)subtotal+=Number(x.quantity||0)*this.num(x.unitCost);let locationId=body?.locationId||null;if(!locationId){const location=await c.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[s.id]);locationId=location.rows[0]?.id||null;}const p=await c.query<any>("insert into purchase_orders(store_id,supplier_id,location_id,status,currency,subtotal,expected_at,notes) values($1,$2,$3,'draft',$4,$5,$6,$7) returning *",[s.id,body?.supplierId||null,locationId,String(body?.currency||s.currency||"PKR"),subtotal,body?.expectedAt??null,body?.notes??null]);for(const x of lines)await c.query("insert into purchase_order_items(purchase_order_id,variant_id,quantity,unit_cost) values($1,$2,$3,$4)",[p.rows[0].id,x.variantId,Number(x.quantity),this.num(x.unitCost)]);return p.rows[0];});}
   async receivePurchaseOrder(id:string,body:any={}){
     const s=await this.store();
     return this.db.transaction(async c=>{
       const p=await c.query<any>("select * from purchase_orders where id=$1 and store_id=$2 for update",[id,s.id]);
       if(!p.rowCount)throw new NotFoundException("Purchase order not found");
       if(p.rows[0].status==="received")return p.rows[0];
+      let receiveLocationId=p.rows[0].location_id||null;
+      if(!receiveLocationId){
+        const location=await c.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[s.id]);
+        receiveLocationId=location.rows[0]?.id||null;
+        if(receiveLocationId) await c.query("update purchase_orders set location_id=$1 where id=$2",[receiveLocationId,id]);
+      }
       const items=await c.query<any>("select * from purchase_order_items where purchase_order_id=$1 order by id",[id]);
       const requested=new Map<string,number>();
       for(const x of Array.isArray(body?.items)?body.items:[]){
@@ -298,7 +304,7 @@ export class CommerceService{
         if(!v.rowCount)throw new NotFoundException("Purchase order variant not found");
         const before=Number(v.rows[0].inventory||0),after=before+qty;
         await c.query("update product_variants set inventory=$1,cost_price=$2,updated_at=now() where id=$3",[after,Number(x.unit_cost),x.variant_id]);
-        if(p.rows[0].location_id)await c.query("insert into inventory_levels(location_id,variant_id,on_hand) values($1,$2,$3) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[p.rows[0].location_id,x.variant_id,qty]);
+        if(receiveLocationId)await c.query("insert into inventory_levels(location_id,variant_id,on_hand) values($1,$2,$3) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[receiveLocationId,x.variant_id,qty]);
         await c.query("update purchase_order_items set received_quantity=received_quantity+$1 where id=$2",[qty,x.id]);
         await c.query("insert into inventory_movements(store_id,variant_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,'purchase_receive',$3,$4,$5,$6,'admin')",[s.id,x.variant_id,qty,before,after,"Purchase order "+id]);
         if(Number(x.received_quantity)+qty<Number(x.quantity)) allReceived=false;
