@@ -3,26 +3,7 @@
 import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";\nimport {adminMutation} from "@/lib/admin-server";
 
-const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
-
-async function request(path:string,init:RequestInit){
-  const adminKey=process.env.ADMIN_API_KEY;
-  if(!adminKey) throw new Error("ADMIN_API_KEY is not configured on the Admin Vercel project.");
-  const response=await fetch(apiBase+path,{
-    ...init,
-    headers:{
-      "Content-Type":"application/json",
-      "X-Admin-Key":adminKey,
-      ...(init.headers||{}),
-    },
-    cache:"no-store",
-  });
-  if(!response.ok){
-    const body=await response.text();
-    throw new Error(body||("Admin API request failed with "+response.status));
-  }
-  return response.json();
-}
+async function request(path:string,init:RequestInit){return adminMutation(path,init);}
 
 export async function createProductAction(formData:FormData){
   const title=String(formData.get("title")||"").trim();
