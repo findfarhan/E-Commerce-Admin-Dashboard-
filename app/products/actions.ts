@@ -1,7 +1,8 @@
 "use server";
 
 import {revalidatePath} from "next/cache";
-import {redirect} from "next/navigation";\nimport {adminMutation} from "@/lib/admin-server";
+import {redirect} from "next/navigation";
+import {adminMutation} from "@/lib/admin-server";
 
 async function request(path:string,init:RequestInit){return adminMutation(path,init);}
 
