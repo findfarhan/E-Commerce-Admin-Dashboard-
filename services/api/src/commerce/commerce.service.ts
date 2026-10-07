@@ -88,8 +88,17 @@ export class CommerceService{
   async discounts(){const s=await this.store();const r=await this.db.query<any>("select * from discount_codes where store_id=$1 order by created_at desc",[s.id]);return {items:r.rows};}
   async createDiscount(body:any){
     const s=await this.store();const code=String(body?.code||"").trim().toUpperCase();const kind=String(body?.kind||"percentage");const value=this.num(body?.value);
-    if(!code||!["percentage","fixed","free_shipping"].includes(kind)||value<0) throw new BadRequestException("Invalid discount");
-    const r=await this.db.query<any>("insert into discount_codes(store_id,code,name,kind,value,applies_to,product_ids,collection_ids,minimum_order,usage_limit,starts_at,ends_at,automatic,active) values($1,$2,$3,$4,$5,$6,$7::uuid[],$8::uuid[],$9,$10,$11,$12,$13,$14) returning *",[s.id,code,body?.name??null,kind,value,String(body?.appliesTo||"order"),body?.productIds||[],body?.collectionIds||[],body?.minimumOrder??null,body?.usageLimit??null,body?.startsAt??null,body?.endsAt??null,Boolean(body?.automatic),body?.active!==false]);return r.rows[0];
+    const appliesTo=String(body?.appliesTo||"order");const startsAt=body?.startsAt?new Date(body.startsAt):null;const endsAt=body?.endsAt?new Date(body.endsAt):null;
+    if(!code||!["percentage","fixed","free_shipping"].includes(kind)||value<0||!["order","product","collection"].includes(appliesTo)) throw new BadRequestException("Invalid discount");
+    if(kind==="percentage"&&value>100) throw new BadRequestException("Percentage discount cannot exceed 100%");
+    if(startsAt&&Number.isNaN(startsAt.getTime())) throw new BadRequestException("Invalid discount start date");
+    if(endsAt&&Number.isNaN(endsAt.getTime())) throw new BadRequestException("Invalid discount end date");
+    if(startsAt&&endsAt&&endsAt<=startsAt) throw new BadRequestException("Discount end date must be after start date");
+    const productIds=Array.isArray(body?.productIds)?body.productIds:[];
+    const collectionIds=Array.isArray(body?.collectionIds)?body.collectionIds:[];
+    if(appliesTo==="product"&&!productIds.length) throw new BadRequestException("Select at least one product for a product-scoped discount");
+    if(appliesTo==="collection"&&!collectionIds.length) throw new BadRequestException("Select at least one collection for a collection-scoped discount");
+    const r=await this.db.query<any>("insert into discount_codes(store_id,code,name,kind,value,applies_to,product_ids,collection_ids,minimum_order,usage_limit,starts_at,ends_at,automatic,active) values($1,$2,$3,$4,$5,$6,$7::uuid[],$8::uuid[],$9,$10,$11,$12,$13,$14) returning *",[s.id,code,body?.name??null,kind,value,appliesTo,productIds,collectionIds,body?.minimumOrder??null,body?.usageLimit??null,startsAt,endsAt,Boolean(body?.automatic),body?.active!==false]);return r.rows[0];
   }
 
   async shipping(){const s=await this.store();const r=await this.db.query<any>("select z.*,coalesce(json_agg(r order by r.created_at) filter(where r.id is not null),'[]') rates from shipping_zones z left join shipping_rates r on r.zone_id=z.id where z.store_id=$1 group by z.id order by z.created_at",[s.id]);return {items:r.rows};}
@@ -103,9 +112,11 @@ export class CommerceService{
   async createTaxRule(body:any){const s=await this.store();const name=String(body?.name||"").trim(),rate=this.num(body?.rate);if(!name||rate<0||rate>1)throw new BadRequestException("rate must be between 0 and 1");const r=await this.db.query<any>("insert into tax_rules(store_id,name,country,region,rate,inclusive,priority,active) values($1,$2,$3,$4,$5,$6,$7,$8) returning *",[s.id,name,body?.country??null,body?.region??null,rate,Boolean(body?.inclusive),Number(body?.priority||0),body?.active!==false]);return r.rows[0];}
 
   private async resolveDiscount(client:any,storeId:string,code:any,subtotal:number,lines:any[]=[]){
-    if(!code) return {amount:0,row:null};
-    const r=await client.query("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1",[storeId,String(code).toUpperCase()]);
-    const d=(r as any).rows[0];if(!d) throw new BadRequestException("Discount code is invalid or expired");
+    const requested=String(code||"").trim().toUpperCase();
+    const r=requested
+      ?await client.query("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1 for update",[storeId,requested])
+      :await client.query("select * from discount_codes where store_id=$1 and automatic=true and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) order by created_at limit 1 for update",[storeId]);
+    const d=(r as any).rows[0];if(!d){if(requested) throw new BadRequestException("Discount code is invalid or expired");return {amount:0,row:null};}
     if(d.minimum_order!==null&&subtotal<Number(d.minimum_order))throw new BadRequestException("Minimum order not met");
     if(d.usage_limit!==null&&Number(d.usage_count)>=Number(d.usage_limit))throw new BadRequestException("Discount usage limit reached");
     let eligibleSubtotal=subtotal;
@@ -158,7 +169,7 @@ export class CommerceService{
       let subtotal=0,cost=0;const locked:any[]=[];
       for(const line of items){const qty=Number(line.quantity||1);if(!Number.isInteger(qty)||qty<1)throw new BadRequestException("Invalid quantity");const v=await c.query<any>("select v.*,p.title,p.store_id,p.taxable from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 for update",[line.variantId,s.id]);if(!v.rowCount)throw new NotFoundException("Variant not found");const row=v.rows[0];if(Number(row.inventory)<qty)throw new ConflictException(row.sku+" has insufficient stock");const unit=line.unitPrice!==undefined?this.num(line.unitPrice):Number(row.price);if(unit<0)throw new BadRequestException("Invalid unit price");subtotal+=unit*qty;cost+=Number(row.cost_price||0)*qty;locked.push({row,qty,unit,lineTotal:unit*qty});}
       const disc=await this.resolveDiscount(c,s.id,body?.discountCode,subtotal,locked);
-      const shipping=Math.max(0,this.num(body?.shippingAmount));
+      let shipping=Math.max(0,this.num(body?.shippingAmount));if(disc.row?.kind==="free_shipping") shipping=0;
       const ship=this.address(body?.shippingAddress),bill=this.address(body?.billingAddress||body?.shippingAddress);
       const taxes=await this.resolveTaxes(c,s.id,ship,subtotal,disc.amount,locked,body);
       const tax=taxes.total;
