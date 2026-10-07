@@ -86,7 +86,7 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
           <h2>Operational state</h2>
           <div className="field-grid">
             <label className="field"><span>Order status</span><select name="status" defaultValue={order.status}><option>confirmed</option><option>processing</option><option>completed</option></select></label>
-            <label className="field"><span>Payment status</span><select name="paymentStatus" defaultValue={order.payment_status}><option>pending</option><option>paid</option><option>refunded</option><option>failed</option></select></label>
+            <label className="field"><span>Payment status</span><select name="paymentStatus" defaultValue={order.payment_status}><option>pending</option><option>partially_paid</option><option>paid</option><option>partially_refunded</option><option>refunded</option><option>failed</option></select></label>
             <label className="field"><span>Fulfillment</span><select name="fulfillmentStatus" defaultValue={order.fulfillment_status}><option>unfulfilled</option><option>processing</option><option>fulfilled</option><option>returned</option></select></label>
             <label className="field"><span>Tracking carrier</span><input name="trackingCarrier" defaultValue={order.tracking_carrier||""} placeholder="TCS, DHL, Leopards..."/></label>
             <label className="field"><span>Tracking number</span><input name="trackingNumber" defaultValue={order.tracking_number||""}/></label>
