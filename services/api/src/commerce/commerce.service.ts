@@ -182,7 +182,12 @@ export class CommerceService{
         if(locationId){const level=await c.query<any>("select on_hand from inventory_levels where location_id=$1 and variant_id=$2 for update",[locationId,x.row.id]);if(!level.rowCount||Number(level.rows[0].on_hand)<x.qty)throw new ConflictException(x.row.sku+" has insufficient stock at selected location");await c.query("update inventory_levels set on_hand=on_hand-$1,updated_at=now() where location_id=$2 and variant_id=$3",[x.qty,locationId,x.row.id]);}
         await c.query("update product_variants set inventory=inventory-$1,updated_at=now() where id=$2",[x.qty,x.row.id]);await c.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'admin_sale',$4,$5,$6,$7,'admin')",[s.id,x.row.id,o.rows[0].id,-x.qty,Number(x.row.inventory),Number(x.row.inventory)-x.qty,"Manual order "+number]);}
       if(disc.row){await c.query("update discount_codes set usage_count=usage_count+1 where id=$1",[disc.row.id]);await c.query("insert into discount_redemptions(discount_id,order_id,customer_id,amount) values($1,$2,$3,$4)",[disc.row.id,o.rows[0].id,customerId,disc.amount]);}
-      if(pay==="paid"||this.num(body?.paidAmount)>0){const amt=this.num(body?.paidAmount,pay==="paid"?total:0);if(amt>0)await c.query("insert into payment_transactions(store_id,order_id,provider,transaction_type,status,amount,currency,metadata) values($1,$2,$3,'capture','succeeded',$4,$5,$6::jsonb)",[s.id,o.rows[0].id,String(body?.paymentProvider||body?.paymentMethod||"manual"),amt,o.rows[0].currency,JSON.stringify({source})]);}
+      const rawPaid=body?.paidAmount===undefined||body?.paidAmount===null||body?.paidAmount===""?null:Number(body.paidAmount);
+      const initialPaid=pay==="paid"?(rawPaid===null||rawPaid<=0?total:rawPaid):(rawPaid&&rawPaid>0?rawPaid:0);
+      if(initialPaid<0||initialPaid>total+0.01) throw new BadRequestException("Paid amount must be between 0 and the order total");
+      const derivedPaymentStatus=initialPaid>=total&&total>0?"paid":initialPaid>0?"partially_paid":"pending";
+      if(initialPaid>0) await c.query("insert into payment_transactions(store_id,order_id,provider,transaction_type,status,amount,currency,metadata) values($1,$2,$3,'capture','succeeded',$4,$5,$6::jsonb)",[s.id,o.rows[0].id,String(body?.paymentProvider||body?.paymentMethod||"manual"),initialPaid,o.rows[0].currency,JSON.stringify({source})]);
+      if(derivedPaymentStatus!==o.rows[0].payment_status){await c.query("update orders set payment_status=$1 where id=$2",[derivedPaymentStatus,o.rows[0].id]);o.rows[0].payment_status=derivedPaymentStatus;}
       await c.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[o.rows[0].id,"Order "+number+" created by admin",JSON.stringify({source})]);
       await c.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[s.id,"New manual order "+number,"Admin created order for "+o.rows[0].currency+" "+Number(o.rows[0].total).toLocaleString(),o.rows[0].id]);
       if(body?.customer?.email||body?.email){
@@ -231,10 +236,66 @@ export class CommerceService{
   }
 
   async completeReturn(id:string,body:any){
-    const store=await this.store();return this.db.transaction(async c=>{const rr=await c.query<any>("select * from returns where id=$1 and store_id=$2 for update",[id,store.id]);if(!rr.rowCount)throw new NotFoundException("Return not found");const ret=rr.rows[0];if(ret.status==="completed")return ret;const orderInfo=await c.query<any>("select fulfillment_location_id from orders where id=$1 and store_id=$2",[ret.order_id,store.id]);let returnLocationId=orderInfo.rows[0]?.fulfillment_location_id||null;if(!returnLocationId){const location=await c.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[store.id]);returnLocationId=location.rows[0]?.id||null;}const items=await c.query<any>("select ri.*,oi.variant_id,oi.order_id from return_items ri join order_items oi on oi.id=ri.order_item_id where ri.return_id=$1",[id]);for(const x of items.rows){if(x.disposition==="restock"&&x.variant_id){const v=await c.query<any>("select inventory from product_variants where id=$1 for update",[x.variant_id]);const before=Number(v.rows[0]?.inventory||0),after=before+Number(x.quantity);if(returnLocationId)await c.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[returnLocationId,x.variant_id,Number(x.quantity)]);await c.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,x.variant_id]);await c.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'return_restock',$4,$5,$6,'Return completed','admin')",[store.id,x.variant_id,ret.order_id,Number(x.quantity),before,after]);}
-        if(x.exchange_variant_id){const ev=await c.query<any>("select inventory from product_variants where id=$1 for update",[x.exchange_variant_id]);if(!ev.rowCount||Number(ev.rows[0].inventory)<Number(x.quantity))throw new ConflictException("Exchange variant has insufficient stock");if(returnLocationId){const level=await c.query<any>("select on_hand from inventory_levels where location_id=$1 and variant_id=$2 for update",[returnLocationId,x.exchange_variant_id]);if(!level.rowCount||Number(level.rows[0].on_hand)<Number(x.quantity))throw new ConflictException("Exchange variant has insufficient stock at the fulfillment location");await c.query("update inventory_levels set on_hand=on_hand-$1,updated_at=now() where location_id=$2 and variant_id=$3",[Number(x.quantity),returnLocationId,x.exchange_variant_id]);}await c.query("update product_variants set inventory=inventory-$1,updated_at=now() where id=$2",[Number(x.quantity),x.exchange_variant_id]);}}
-      const refund=Math.max(0,body?.refundAmount!==undefined?this.num(body.refundAmount):Number(ret.refund_amount||0));if(refund>0){const o=await c.query<any>("select currency from orders where id=$1",[ret.order_id]);await c.query("insert into payment_transactions(store_id,order_id,provider,transaction_type,status,amount,currency,metadata) values($1,$2,$3,'refund','succeeded',$4,$5,$6::jsonb)",[store.id,ret.order_id,String(body?.provider||"manual"),refund,o.rows[0]?.currency||"PKR",JSON.stringify({returnId:id})]);}
-      const done=await c.query<any>("update returns set status='completed',refund_amount=$1,completed_at=now() where id=$2 returning *",[refund,id]);await c.query("insert into order_events(order_id,event_type,message,metadata) values($1,'return.completed','Return/exchange completed',$2::jsonb)",[ret.order_id,JSON.stringify({returnId:id,refund})]);await this.logAudit(c,store.id,"return.completed","return",id,done.rows[0]);return done.rows[0];});
+    const store=await this.store();
+    return this.db.transaction(async client=>{
+      const returnResult=await client.query<any>("select * from returns where id=$1 and store_id=$2 for update",[id,store.id]);
+      if(!returnResult.rowCount) throw new NotFoundException("Return not found");
+      const ret=returnResult.rows[0];
+      if(ret.status==="completed") return ret;
+      if(ret.status==="rejected") throw new ConflictException("Rejected returns cannot be completed");
+
+      const orderResult=await client.query<any>("select * from orders where id=$1 and store_id=$2 for update",[ret.order_id,store.id]);
+      if(!orderResult.rowCount) throw new NotFoundException("Order not found");
+      const order=orderResult.rows[0];
+
+      let returnLocationId=order.fulfillment_location_id||null;
+      if(!returnLocationId){
+        const location=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[store.id]);
+        returnLocationId=location.rows[0]?.id||null;
+      }
+
+      const items=await client.query<any>("select ri.*,oi.variant_id,oi.order_id from return_items ri join order_items oi on oi.id=ri.order_item_id where ri.return_id=$1",[id]);
+      for(const item of items.rows){
+        if(item.disposition==="restock"&&item.variant_id){
+          const variant=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.variant_id]);
+          if(!variant.rowCount) throw new NotFoundException("Returned variant no longer exists");
+          const before=Number(variant.rows[0].inventory||0),after=before+Number(item.quantity);
+          if(returnLocationId) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[returnLocationId,item.variant_id,Number(item.quantity)]);
+          await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
+          await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'return_restock',$4,$5,$6,'Return completed','admin')",[store.id,item.variant_id,ret.order_id,Number(item.quantity),before,after]);
+        }
+        if(item.exchange_variant_id){
+          const exchange=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.exchange_variant_id]);
+          if(!exchange.rowCount||Number(exchange.rows[0].inventory)<Number(item.quantity)) throw new ConflictException("Exchange variant has insufficient stock");
+          if(returnLocationId){
+            const level=await client.query<any>("select on_hand from inventory_levels where location_id=$1 and variant_id=$2 for update",[returnLocationId,item.exchange_variant_id]);
+            if(!level.rowCount||Number(level.rows[0].on_hand)<Number(item.quantity)) throw new ConflictException("Exchange variant has insufficient stock at the fulfillment location");
+            await client.query("update inventory_levels set on_hand=on_hand-$1,updated_at=now() where location_id=$2 and variant_id=$3",[Number(item.quantity),returnLocationId,item.exchange_variant_id]);
+          }
+          await client.query("update product_variants set inventory=inventory-$1,updated_at=now() where id=$2",[Number(item.quantity),item.exchange_variant_id]);
+        }
+      }
+
+      const refund=Math.max(0,body?.refundAmount!==undefined?this.num(body.refundAmount):Number(ret.refund_amount||0));
+      const ledgerBefore=await client.query<any>("select coalesce(sum(amount) filter(where status='succeeded' and transaction_type in ('capture','payment')),0) captured,coalesce(sum(amount) filter(where status='succeeded' and transaction_type='refund'),0) refunded from payment_transactions where order_id=$1",[ret.order_id]);
+      const capturedBefore=Number(ledgerBefore.rows[0].captured||0),refundedBefore=Number(ledgerBefore.rows[0].refunded||0);
+      if(refund>Math.max(0,capturedBefore-refundedBefore)+0.01) throw new ConflictException("Refund exceeds the remaining captured payment");
+      if(refund>0){
+        await client.query("insert into payment_transactions(store_id,order_id,provider,transaction_type,status,amount,currency,metadata) values($1,$2,$3,'refund','succeeded',$4,$5,$6::jsonb)",[store.id,ret.order_id,String(body?.provider||"manual"),refund,order.currency||"PKR",JSON.stringify({returnId:id})]);
+      }
+
+      const ledgerAfter=await client.query<any>("select coalesce(sum(amount) filter(where status='succeeded' and transaction_type in ('capture','payment')),0) captured,coalesce(sum(amount) filter(where status='succeeded' and transaction_type='refund'),0) refunded from payment_transactions where order_id=$1",[ret.order_id]);
+      const captured=Number(ledgerAfter.rows[0].captured||0),refunded=Number(ledgerAfter.rows[0].refunded||0),net=Math.max(0,captured-refunded),total=Number(order.total||0);
+      const paymentStatus=refunded>=captured&&captured>0?"refunded":refunded>0?"partially_refunded":net>=total&&total>0?"paid":net>0?"partially_paid":"pending";
+      await client.query("update orders set payment_status=$1 where id=$2",[paymentStatus,ret.order_id]);
+
+      const done=await client.query<any>("update returns set status='completed',refund_amount=$1,completed_at=now() where id=$2 returning *",[refund,id]);
+      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'return.completed','Return/exchange completed',$2::jsonb)",[ret.order_id,JSON.stringify({returnId:id,refund,paymentStatus})]);
+      const customer=await client.query<any>("select c.email from customers c join orders o on o.customer_id=c.id where o.id=$1",[ret.order_id]);
+      if(customer.rows[0]?.email) await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','return_refund',$2,$3,$4::jsonb,'queued')",[store.id,customer.rows[0].email,"Return / refund for "+order.order_number,JSON.stringify({orderId:ret.order_id,orderNumber:order.order_number,returnId:id,refund,paymentStatus})]);
+      await this.logAudit(client,store.id,"return.completed","return",id,done.rows[0],{refund,paymentStatus});
+      return {...done.rows[0],paymentStatus};
+    });
   }
 
   async payments(orderId?:string){const s=await this.store();const r=await this.db.query<any>("select * from payment_transactions where store_id=$1 "+(orderId?"and order_id=$2 ":"")+"order by created_at desc limit 500",orderId?[s.id,orderId]:[s.id]);return {items:r.rows};}
