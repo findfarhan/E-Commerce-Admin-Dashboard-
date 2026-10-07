@@ -69,3 +69,25 @@ export async function receivePurchaseOrderAction(id:string){await adminMutation(
 export async function createMetafieldDefinitionAction(formData:FormData){
   await adminMutation("/v1/admin/commerce/metafield-definitions",{method:"POST",body:JSON.stringify({resourceType:"product",namespace:String(formData.get("namespace")||"custom"),key:String(formData.get("key")||"").trim(),name:String(formData.get("name")||"").trim(),valueType:String(formData.get("valueType")||"text"),filterable:formData.get("filterable")==="on",searchable:formData.get("searchable")==="on"})});revalidatePath("/metafields");
 }
+
+
+export async function setLocationActiveAction(id:string,active:boolean){
+  await adminMutation("/v1/admin/commerce/locations/"+id+"/active",{method:"PATCH",body:JSON.stringify({active})});
+  revalidatePath("/inventory");
+}
+export async function setDiscountActiveAction(id:string,active:boolean){
+  await adminMutation("/v1/admin/commerce/discounts/"+id+"/active",{method:"PATCH",body:JSON.stringify({active})});
+  revalidatePath("/discounts");
+}
+export async function setShippingZoneActiveAction(id:string,active:boolean){
+  await adminMutation("/v1/admin/commerce/shipping/zones/"+id+"/active",{method:"PATCH",body:JSON.stringify({active})});
+  revalidatePath("/shipping-tax");
+}
+export async function setShippingRateActiveAction(id:string,active:boolean){
+  await adminMutation("/v1/admin/commerce/shipping/rates/"+id+"/active",{method:"PATCH",body:JSON.stringify({active})});
+  revalidatePath("/shipping-tax");
+}
+export async function setTaxRuleActiveAction(id:string,active:boolean){
+  await adminMutation("/v1/admin/commerce/taxes/"+id+"/active",{method:"PATCH",body:JSON.stringify({active})});
+  revalidatePath("/shipping-tax");
+}
