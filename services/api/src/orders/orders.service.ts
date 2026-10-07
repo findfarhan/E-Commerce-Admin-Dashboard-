@@ -84,6 +84,11 @@ export class OrdersService{
       if(!order.rowCount) throw new NotFoundException("Order not found");
       if(order.rows[0].status==="canceled") return {ok:true,idempotent:true,order:order.rows[0]};
       if(order.rows[0].fulfillment_status==="fulfilled") throw new ConflictException("Fulfilled orders must use a return/refund workflow");
+      let restoreLocationId=order.rows[0].fulfillment_location_id||null;
+      if(!restoreLocationId){
+        const location=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[storeId]);
+        restoreLocationId=location.rows[0]?.id||null;
+      }
 
       const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
       for(const item of items.rows){
@@ -92,6 +97,7 @@ export class OrdersService{
         if(!variant.rowCount) continue;
         const before=Number(variant.rows[0].inventory);
         const after=before+Number(item.quantity);
+        if(restoreLocationId) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[restoreLocationId,item.variant_id,Number(item.quantity)]);
         await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_cancel',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order canceled")]);
       }
@@ -115,6 +121,11 @@ export class OrdersService{
       if(current.fulfillment_status==="returned") return {ok:true,idempotent:true,order:current};
       if(current.status==="canceled") throw new ConflictException("Canceled orders cannot be returned");
       if(current.fulfillment_status!=="fulfilled") throw new ConflictException("Only fulfilled orders can be returned");
+      let restoreLocationId=current.fulfillment_location_id||null;
+      if(!restoreLocationId){
+        const location=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[storeId]);
+        restoreLocationId=location.rows[0]?.id||null;
+      }
 
       const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
       for(const item of items.rows){
@@ -123,6 +134,7 @@ export class OrdersService{
         if(!variant.rowCount) continue;
         const before=Number(variant.rows[0].inventory);
         const after=before+Number(item.quantity);
+        if(restoreLocationId) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[restoreLocationId,item.variant_id,Number(item.quantity)]);
         await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
       }
