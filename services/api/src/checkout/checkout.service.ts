@@ -152,8 +152,11 @@ export class CheckoutService{
         const e=await this.db.query<any>("select coalesce(sum(line_total),0) amount from checkout_lines where checkout_id=$1 and product_id=any($2::uuid[])",[id,discountRow.product_ids]);
         eligibleSubtotal=Number(e.rows[0]?.amount||0);
       }else if(discountRow.applies_to==="collection"&&Array.isArray(discountRow.collection_ids)&&discountRow.collection_ids.length){
-        const e=await this.db.query<any>("select coalesce(sum(cl.line_total),0) amount from checkout_lines cl where cl.checkout_id=$1 and exists(select 1 from collection_products cp where cp.product_id=cl.product_id and cp.collection_id=any($2::uuid[]))",[id,discountRow.collection_ids]);
-        eligibleSubtotal=Number(e.rows[0]?.amount||0);
+        const cart=await this.db.query<any>("select product_id,line_total from checkout_lines where checkout_id=$1",[id]);
+        const productIds=[...new Set(cart.rows.map((x:any)=>String(x.product_id)))];
+        const matched=await this.collections.productIdsForCollections(discountRow.collection_ids,productIds);
+        const allowed=new Set(matched.map(String));
+        eligibleSubtotal=cart.rows.filter((x:any)=>allowed.has(String(x.product_id))).reduce((sum:number,x:any)=>sum+Number(x.line_total||0),0);
       }
       discountAmount=discountRow.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(discountRow.value))/100:discountRow.kind==="fixed"?Math.min(eligibleSubtotal,Number(discountRow.value)):0;
       if(discountRow.kind==="free_shipping") shippingAmount=0;
@@ -288,8 +291,8 @@ export class CheckoutService{
           eligibleSubtotal=locked.filter((x:any)=>allowed.has(String(x.variant.product_id))).reduce((sum:number,x:any)=>sum+Number(x.lineTotal),0);
         }else if(discountRow.applies_to==="collection"&&Array.isArray(discountRow.collection_ids)&&discountRow.collection_ids.length){
           const productIds=[...new Set(locked.map((x:any)=>String(x.variant.product_id)))];
-          const memberships=await client.query<any>("select distinct product_id from collection_products where collection_id=any($1::uuid[]) and product_id=any($2::uuid[])",[discountRow.collection_ids,productIds]);
-          const allowed=new Set(memberships.rows.map((x:any)=>String(x.product_id)));
+          const matched=await this.collections.productIdsForCollections(discountRow.collection_ids,productIds,client);
+          const allowed=new Set(matched.map(String));
           eligibleSubtotal=locked.filter((x:any)=>allowed.has(String(x.variant.product_id))).reduce((sum:number,x:any)=>sum+Number(x.lineTotal),0);
         }
         discountAmount=discountRow.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(discountRow.value))/100:discountRow.kind==="fixed"?Math.min(eligibleSubtotal,Number(discountRow.value)):0;
