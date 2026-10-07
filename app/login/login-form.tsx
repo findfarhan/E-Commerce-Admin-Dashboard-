@@ -1,10 +1,11 @@
 "use client";
 
-import {useActionState,useState} from "react";
+import {useActionState,useEffect,useState} from "react";
 import {useFormStatus} from "react-dom";
 import {loginAction,type LoginState} from "./actions";
 
 const initialState:LoginState={status:"idle",message:""};
+const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
 
 function SubmitButton(){
   const {pending}=useFormStatus();
@@ -17,6 +18,18 @@ function SubmitButton(){
 export default function LoginForm(){
   const [state,action]=useActionState(loginAction,initialState);
   const [showPassword,setShowPassword]=useState(false);
+  const [serviceState,setServiceState]=useState<"warming"|"ready"|"offline">("warming");
+
+  useEffect(()=>{
+    let cancelled=false;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),60000);
+    fetch(apiBase+"/health",{cache:"no-store",signal:controller.signal,mode:"no-cors"})
+      .then(()=>{if(!cancelled)setServiceState("ready");})
+      .catch(()=>{if(!cancelled)setServiceState("offline");})
+      .finally(()=>clearTimeout(timer));
+    return()=>{cancelled=true;clearTimeout(timer);controller.abort();};
+  },[]);
 
   return <form action={action} className="login-form" noValidate>
     <div className="login-field">
@@ -51,7 +64,7 @@ export default function LoginForm(){
     <SubmitButton/>
 
     <div className="login-trust">
-      <span><i/>Encrypted session</span>
+      <span><i/>{serviceState==="warming"?"Waking commerce API…":serviceState==="ready"?"Commerce API ready":"Commerce API retrying on sign-in"}</span>
       <span>8-hour secure access</span>
     </div>
   </form>;
