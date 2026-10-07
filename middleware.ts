@@ -43,7 +43,7 @@ function secureHeaders(response:NextResponse){
 
 export async function middleware(request:NextRequest){
   const path=request.nextUrl.pathname;
-  if(path==="/login"||path.startsWith("/login/")) return secureHeaders(NextResponse.next());
+  if(path==="/login"||path.startsWith("/login/")||path==="/setup"||path.startsWith("/setup/")) return secureHeaders(NextResponse.next());
 
   const secret=process.env.ADMIN_SESSION_SECRET||process.env.ADMIN_API_KEY||"";
   const token=request.cookies.get("jc_session")?.value;
