@@ -25,6 +25,7 @@ export class CommerceController{
   @Post("orders/:id/edit") editOrder(@Param("id") id:string,@Body() b:any){return this.commerce.editOrder(id,b);}
   @Get("draft-orders") drafts(){return this.commerce.drafts();}
   @Post("draft-orders") createDraft(@Body() b:any){return this.commerce.createDraft(b);}
+  @Post("draft-orders/:id/send") sendDraft(@Param("id") id:string){return this.commerce.sendDraftQuote(id);}
   @Post("draft-orders/:id/convert") convertDraft(@Param("id") id:string,@Body() b:any){return this.commerce.convertDraft(id,b);}
   @Get("payments") payments(@Query("orderId") id?:string){return this.commerce.payments(id);}
   @Post("orders/:id/payments") payment(@Param("id") id:string,@Body() b:any){return this.commerce.recordPayment(id,b);}
