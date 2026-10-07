@@ -37,6 +37,11 @@ export async function createDraftOrderAction(formData:FormData){
     notes:String(formData.get("notes")||"").trim()||null,quoteExpiresAt:String(formData.get("quoteExpiresAt")||"").trim()||null
   })});revalidatePath("/draft-orders");
 }
+export async function sendDraftQuoteAction(id:string){
+  await adminMutation("/v1/admin/commerce/draft-orders/"+id+"/send",{method:"POST",body:"{}"});
+  revalidatePath("/draft-orders");
+}
+
 export async function convertDraftAction(id:string){
   const order:any=await adminMutation("/v1/admin/commerce/draft-orders/"+id+"/convert",{method:"POST",body:JSON.stringify({paymentMethod:"cod",paymentStatus:"pending"})});
   revalidatePath("/draft-orders");revalidatePath("/orders");redirect("/orders/"+order.id);
