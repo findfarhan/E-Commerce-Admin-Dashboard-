@@ -50,6 +50,23 @@ export class AuthService{
     await this.db.query("update admin_users set last_seen_at=now() where id=$1",[user.id]);
     return {token:this.sign({sub:user.id,email:user.email,name:user.name,permissions:access.permissions,roles:access.roles.map(x=>x.name),iat:now,exp}),expiresAt:new Date(exp*1000).toISOString(),user:{id:user.id,email:user.email,name:user.name,roles:access.roles,permissions:access.permissions}};
   }
+  async bootstrapOwner(body:any){
+    const storeId=await this.storeId();
+    const existing=await this.db.query<any>("select count(*)::int as count from admin_users where store_id=$1",[storeId]);
+    if(Number(existing.rows[0]?.count||0)>0) throw new BadRequestException("Staff setup is already complete");
+    const email=String(body?.email||"").trim().toLowerCase();
+    const name=String(body?.name||"").trim();
+    const password=String(body?.password||"");
+    if(!email.includes("@")||!name||password.length<12) throw new BadRequestException("Name, valid email and password (12+ chars) are required");
+    return this.db.transaction(async c=>{
+      const role=await c.query<any>("select id from admin_roles where store_id=$1 and name='Owner' limit 1",[storeId]);
+      if(!role.rowCount) throw new NotFoundException("Owner role is not configured");
+      const user=await c.query<any>("insert into admin_users(store_id,email,name,password_hash,status) values($1,$2,$3,$4,'active') returning id,email,name,status,created_at",[storeId,email,name,this.hashPassword(password)]);
+      await c.query("insert into admin_user_roles(user_id,role_id) values($1,$2)",[user.rows[0].id,role.rows[0].id]);
+      return user.rows[0];
+    });
+  }
+
   async roles(){
     const storeId=await this.storeId();
     const r=await this.db.query<any>("select id,name,permissions,created_at from admin_roles where store_id=$1 order by case name when 'Owner' then 0 when 'Manager' then 1 else 2 end,name",[storeId]);
