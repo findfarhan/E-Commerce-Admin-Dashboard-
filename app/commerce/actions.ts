@@ -5,7 +5,7 @@ import {adminMutation} from "@/lib/admin-server";
 
 function lines(formData:FormData){
   const out:any[]=[];
-  for(let i=0;i<8;i++){
+  for(let i=0;i<20;i++){
     const variantId=String(formData.get("variantId_"+i)||"").trim();
     if(!variantId) continue;
     const quantity=Number(formData.get("quantity_"+i)||1);
