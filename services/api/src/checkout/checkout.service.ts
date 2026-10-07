@@ -101,7 +101,7 @@ export class CheckoutService{
     const paymentMethod=String(body?.paymentMethod||"cod").toLowerCase();
     if(paymentMethod!=="cod") throw new BadRequestException("Only COD is enabled until an online payment provider is connected");
 
-    const shippingMethod=String(body?.shippingMethod||"standard").trim();
+    let shippingMethod=String(body?.shippingMethod||"standard").trim();
 
     const checkoutState=await this.db.query<any>("select subtotal from checkout_sessions where id=$1 and store_id=$2 and status='open' and expires_at>now() limit 1",[id,store.id]);
     if(!checkoutState.rowCount) throw new NotFoundException("Open checkout not found");
@@ -110,12 +110,18 @@ export class CheckoutService{
     const weightResult=await this.db.query<any>("select coalesce(sum(cl.quantity*coalesce(v.weight_grams,p.weight_grams,0)),0)::int weight from checkout_lines cl join product_variants v on v.id=cl.variant_id join products p on p.id=cl.product_id where cl.checkout_id=$1",[id]);
     const weight=Number(weightResult.rows[0]?.weight||0);
 
-    const zone=await this.db.query<any>("select z.id from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by z.created_at limit 1",[store.id,shipping.country,shipping.region,shipping.city]);
+    const zoneCount=await this.db.query<any>("select count(*)::int as count from shipping_zones where store_id=$1 and active=true",[store.id]);
+    const zone=await this.db.query<any>("select z.id,z.name from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by ((cardinality(z.cities)>0)::int*4+(cardinality(z.regions)>0)::int*2+(cardinality(z.countries)>0)::int) desc,z.created_at limit 1",[store.id,shipping.country,shipping.region,shipping.city]);
+    if(Number(zoneCount.rows[0]?.count||0)>0&&!zone.rowCount) throw new BadRequestException("Delivery is not available for this address");
     let shippingAmount=0;
     if(zone.rowCount){
       const rates=await this.db.query<any>("select * from shipping_rates where zone_id=$1 and active=true order by created_at",[zone.rows[0].id]);
-      const selected=rates.rows.find((r:any)=>(r.minimum_order===null||subtotal>=Number(r.minimum_order))&&(r.maximum_order===null||subtotal<=Number(r.maximum_order))&&(r.minimum_weight_grams===null||weight>=Number(r.minimum_weight_grams))&&(r.maximum_weight_grams===null||weight<=Number(r.maximum_weight_grams)));
-      if(selected) shippingAmount=selected.rate_type==="free"?0:Number(selected.amount||0);
+      const eligible=rates.rows.filter((r:any)=>(r.minimum_order===null||subtotal>=Number(r.minimum_order))&&(r.maximum_order===null||subtotal<=Number(r.maximum_order))&&(r.minimum_weight_grams===null||weight>=Number(r.minimum_weight_grams))&&(r.maximum_weight_grams===null||weight<=Number(r.maximum_weight_grams)));
+      if(!eligible.length) throw new BadRequestException("No shipping rate is available for this order");
+      const requested=shippingMethod.toLowerCase();
+      const selected=eligible.find((r:any)=>String(r.service_code||"").toLowerCase()===requested||String(r.name||"").toLowerCase()===requested)||eligible[0];
+      shippingMethod=String(selected.service_code||selected.name||shippingMethod);
+      shippingAmount=selected.rate_type==="free"?0:Number(selected.amount||0);
     }
 
     let discountRow:any=null;
