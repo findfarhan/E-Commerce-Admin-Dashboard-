@@ -1,4 +1,5 @@
 import {cookies} from "next/headers";
+import {redirect} from "next/navigation";
 import type {Customer,Order,Product,ProductMediaSet,ProductOption,ProductVariant} from "./types";
 
 const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
@@ -9,8 +10,7 @@ export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>
     const token=jar.get("jc_session")?.value;
     const adminKey=process.env.ADMIN_API_KEY||"";
     if(!token&&!adminKey){
-      if(process.env.NODE_ENV==="production") throw new Error("Admin authentication is not configured.");
-      return null;
+      redirect("/login");
     }
     const headers:Record<string,string>={Accept:"application/json"};
     if(token) headers.Authorization="Bearer "+token;
@@ -21,12 +21,15 @@ export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>
       signal:AbortSignal.timeout(20000),
     });
     if(!response.ok){
+      if(response.status===401) redirect("/login");
       const body=await response.text();
-      throw new Error("Admin API "+response.status+": "+(body||response.statusText));
+      console.error("[admin-api]",path,response.status,body||response.statusText);
+      return null;
     }
     return await response.json() as T;
-  }catch(error){
-    if(process.env.NODE_ENV==="production") throw error;
+  }catch(error:any){
+    if(error?.digest?.startsWith?.("NEXT_REDIRECT")) throw error;
+    console.error("[admin-api]",path,error);
     return null;
   }
 }
