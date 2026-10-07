@@ -1,16 +1,22 @@
+import {cookies} from "next/headers";
 import type {Customer,Order,Product,ProductMediaSet,ProductOption,ProductVariant} from "./types";
 
 const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashboard-ptgs.onrender.com").replace(/\/$/,"");
-const adminKey=process.env.ADMIN_API_KEY||"";
 
 export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>{
-  if(!adminKey){
-    if(process.env.NODE_ENV==="production") throw new Error("ADMIN_API_KEY is not configured.");
-    return null;
-  }
   try{
+    const jar=await cookies();
+    const token=jar.get("jc_session")?.value;
+    const adminKey=process.env.ADMIN_API_KEY||"";
+    if(!token&&!adminKey){
+      if(process.env.NODE_ENV==="production") throw new Error("Admin authentication is not configured.");
+      return null;
+    }
+    const headers:Record<string,string>={Accept:"application/json"};
+    if(token) headers.Authorization="Bearer "+token;
+    else headers["X-Admin-Key"]=adminKey;
     const response=await fetch(apiBase+path,{
-      headers:{Accept:"application/json","X-Admin-Key":adminKey},
+      headers,
       cache:"no-store",
       signal:AbortSignal.timeout(20000),
     });
