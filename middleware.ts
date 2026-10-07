@@ -58,4 +58,4 @@ export async function middleware(request:NextRequest){
   loginUrl.searchParams.set("next",path);
   return secureHeaders(NextResponse.redirect(loginUrl));
 }
-export const config={matcher:["/((?!_next/static|_next/image|favicon.ico|robots.txt).*)"]};
+export const config={matcher:["/api/:path*"]};
