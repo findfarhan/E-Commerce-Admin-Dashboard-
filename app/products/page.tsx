@@ -85,3 +85,4 @@ export default async function Products({searchParams}:{searchParams:Promise<{q?:
     </section>
   </div>;
 }
+ 
