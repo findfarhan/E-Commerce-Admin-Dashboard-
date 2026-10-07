@@ -126,8 +126,8 @@ export class CommerceService{
     }else if(d.applies_to==="collection"&&Array.isArray(d.collection_ids)&&d.collection_ids.length){
       const productIds=[...new Set(lines.map(x=>String(x.row?.product_id)).filter(Boolean))];
       if(productIds.length){
-        const matched=await client.query("select distinct product_id from collection_products where collection_id=any($1::uuid[]) and product_id=any($2::uuid[])",[d.collection_ids,productIds]);
-        const allowed=new Set((matched as any).rows.map((x:any)=>String(x.product_id)));
+        const matched=await this.collections.productIdsForCollections(d.collection_ids,productIds,client);
+        const allowed=new Set(matched.map(String));
         eligibleSubtotal=lines.filter(x=>allowed.has(String(x.row?.product_id))).reduce((sum,x)=>sum+Number(x.lineTotal||0),0);
       }else eligibleSubtotal=0;
     }
