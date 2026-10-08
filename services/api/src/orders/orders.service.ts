@@ -122,12 +122,6 @@ export class OrdersService{
       if(current.fulfillment_status==="returned") return {ok:true,idempotent:true,order:current};
       if(current.status==="canceled") throw new ConflictException("Canceled orders cannot be returned");
       if(current.fulfillment_status!=="fulfilled") throw new ConflictException("Only fulfilled orders can be returned");
-      let restoreLocationId=current.fulfillment_location_id||null;
-      if(!restoreLocationId){
-        const location=await client.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[storeId]);
-        restoreLocationId=location.rows[0]?.id||null;
-      }
-
       // Returned stock remains quarantined until a separate inspection/restock workflow exists.
       // Do not increase sellable inventory for an uninspected return.
       const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
