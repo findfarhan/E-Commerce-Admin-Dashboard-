@@ -205,7 +205,7 @@ export class CommerceService{
     const s=await this.store();const items=Array.isArray(body?.items)?body.items:[];if(!items.length)throw new BadRequestException("At least one item is required");
     return this.db.transaction(async c=>{
       let customerId=body?.customerId||null;
-      if(!customerId&&body?.customer?.email){const x=body.customer;const cr=await c.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=coalesce(excluded.name,customers.name),phone=coalesce(excluded.phone,customers.phone) returning id",[s.id,String(x.email).toLowerCase(),x.name??null,x.phone??null]);customerId=cr.rows[0].id;}
+      if(!customerId&&body?.customer?.email){const x=body.customer;const cr=await c.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and email<>'' do update set name=coalesce(excluded.name,customers.name),phone=coalesce(excluded.phone,customers.phone) returning id",[s.id,String(x.email).toLowerCase(),x.name??null,x.phone??null]);customerId=cr.rows[0].id;}
       let locationId=body?.locationId||null;
       if(!locationId){
         const defaultLocation=await c.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[s.id]);
@@ -251,7 +251,7 @@ export class CommerceService{
       let customerId=body?.customerId||null;
       if(!customerId&&body?.customer?.email){
         const x=body.customer;
-        const cr=await c.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=coalesce(excluded.name,customers.name),phone=coalesce(excluded.phone,customers.phone) returning id",[s.id,String(x.email).toLowerCase(),x.name??null,x.phone??null]);
+        const cr=await c.query<any>("insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and email<>'' do update set name=coalesce(excluded.name,customers.name),phone=coalesce(excluded.phone,customers.phone) returning id",[s.id,String(x.email).toLowerCase(),x.name??null,x.phone??null]);
         customerId=cr.rows[0].id;
       }
       let subtotal=0;const lines:any[]=[];for(const line of items){const v=await c.query<any>("select v.id,v.product_id,v.sku,v.price,p.title,p.taxable from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2",[line.variantId,s.id]);if(!v.rowCount)throw new NotFoundException("Variant not found");const qty=Number(line.quantity||1),unit=line.unitPrice!==undefined?this.num(line.unitPrice):Number(v.rows[0].price);subtotal+=qty*unit;lines.push({row:v.rows[0],...v.rows[0],qty,unit,lineTotal:qty*unit});}
