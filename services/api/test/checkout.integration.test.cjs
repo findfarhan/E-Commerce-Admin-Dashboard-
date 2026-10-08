@@ -27,6 +27,8 @@ if(process.env.DATABASE_URL && process.env.DATABASE_URL!==testUrl){
   throw new Error("Refusing checkout tests: DATABASE_URL must not point to a different (possibly production) database.");
 }
 process.env.DATABASE_URL=testUrl;
+// The disposable PostgreSQL service in CI runs without TLS; production TLS is unaffected.
+process.env.DB_SSL="false";
 process.env.STORE_DOMAIN="checkout-regression.invalid";
 
 const root=path.resolve(__dirname,"../../..");
