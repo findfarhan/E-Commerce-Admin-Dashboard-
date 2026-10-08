@@ -12,6 +12,8 @@ const assert=require("node:assert/strict");
 const {readFileSync,readdirSync}=require("node:fs");
 const path=require("node:path");
 const {Pool}=require("pg");
+// NestJS decorators need reflection metadata even when services are constructed directly.
+require("reflect-metadata");
 const {CheckoutService}=require("../dist/checkout/checkout.service.js");
 const {CollectionsService}=require("../dist/collections/collections.service.js");
 const {DatabaseService}=require("../dist/database/database.service.js");
