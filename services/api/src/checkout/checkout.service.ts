@@ -339,7 +339,7 @@ export class CheckoutService{
 
       const email=String(checkout.customer_email).toLowerCase();
       const customerResult=await client.query<any>(
-        "insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and trim(email)<>'' do update set name=excluded.name,phone=excluded.phone returning id,name,email,phone",
+        "insert into customers(store_id,email,name,phone,attributes) values($1,$2,$3,$4,'{}'::jsonb) on conflict(store_id,lower(email)) where email is not null and email<>'' do update set name=excluded.name,phone=excluded.phone returning id,name,email,phone",
         [store.id,email,checkout.customer_name,checkout.customer_phone]
       );
       const customer=customerResult.rows[0];
