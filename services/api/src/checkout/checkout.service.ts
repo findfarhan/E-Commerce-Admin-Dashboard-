@@ -51,6 +51,21 @@ export class CheckoutService{
         priced.push({...variant,quantity,unitPrice,lineTotal:unitPrice*quantity});
       }
 
+      // The same variant can appear in multiple cart lines. Validate aggregate
+      // quantity before opening a session, not only line-by-line stock.
+      const quantities=new Map<string,{quantity:number;inventory:number;sku:string}>();
+      for(const line of priced){
+        const previous=quantities.get(String(line.variant_id));
+        quantities.set(String(line.variant_id),{
+          quantity:(previous?.quantity||0)+Number(line.quantity),
+          inventory:Number(line.inventory),
+          sku:String(line.sku),
+        });
+      }
+      for(const entry of quantities.values()){
+        if(entry.quantity>entry.inventory) throw new BadRequestException(entry.sku+" has only "+entry.inventory+" item(s) available");
+      }
+
       const subtotal=priced.reduce((sum,line)=>sum+line.lineTotal,0);
       const checkout=await client.query<any>("insert into checkout_sessions(store_id,status,currency,subtotal,payment_method) values($1,'open',$2,$3,'cod') returning id,status,currency,subtotal,expires_at,created_at",[store.id,store.currency||"PKR",subtotal]);
 
@@ -160,6 +175,7 @@ export class CheckoutService{
         eligibleSubtotal=cart.rows.filter((x:any)=>allowed.has(String(x.product_id))).reduce((sum:number,x:any)=>sum+Number(x.line_total||0),0);
       }
       discountAmount=discountRow.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(discountRow.value))/100:discountRow.kind==="fixed"?Math.min(eligibleSubtotal,Number(discountRow.value)):0;
+      discountAmount=Math.round(Math.max(0,discountAmount)*100)/100;
       if(discountRow.kind==="free_shipping") shippingAmount=0;
     }
 
