@@ -31,8 +31,7 @@ export class OrdersService{
     const storeId=await this.storeId();
     const allowedStatus=["confirmed","processing","completed"];
     const allowedFulfillment=["unfulfilled","processing","fulfilled","returned"];
-    const allowedPayment:string[]=[];
-    const status=body?.status!==undefined?String(body.status):undefined;
+        const status=body?.status!==undefined?String(body.status):undefined;
     const fulfillment=body?.fulfillmentStatus!==undefined?String(body.fulfillmentStatus):undefined;
     const payment=body?.paymentStatus!==undefined?String(body.paymentStatus):undefined;
     if(status&&!allowedStatus.includes(status)) throw new BadRequestException("Invalid order status");
@@ -129,21 +128,14 @@ export class OrdersService{
         restoreLocationId=location.rows[0]?.id||null;
       }
 
+      // Returned stock remains quarantined until a separate inspection/restock workflow exists.
+      // Do not increase sellable inventory for an uninspected return.
       const items=await client.query<any>("select * from order_items where order_id=$1",[id]);
-      for(const item of items.rows){
-        if(!item.variant_id) continue;
-        const variant=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.variant_id]);
-        if(!variant.rowCount) continue;
-        const before=Number(variant.rows[0].inventory);
-        const after=before+Number(item.quantity);
-        if(restoreLocationId) await client.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,$3,0) on conflict(location_id,variant_id) do update set on_hand=inventory_levels.on_hand+excluded.on_hand,updated_at=now()",[restoreLocationId,item.variant_id,Number(item.quantity)]);
-        await client.query("update product_variants set inventory=$1,updated_at=now() where id=$2",[after,item.variant_id]);
-        await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
-      }
+      const returnedItems=items.rows.map((item:any)=>({variantId:item.variant_id,quantity:Number(item.quantity)}));
 
       const paymentStatus=current.payment_status;
       const updated=await client.query<any>("update orders set fulfillment_status='returned',payment_status=$1,notes=coalesce($2,notes) where id=$3 returning *",[paymentStatus,body?.reason??null,id]);
-      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.returned',$2,$3::jsonb)",[id,"Order returned and inventory restored",JSON.stringify({reason:body?.reason||null,paymentStatus})]);
+      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.returned',$2,$3::jsonb)",[id,"Order returned; stock awaiting inspection",JSON.stringify({reason:body?.reason||null,paymentStatus,returnedItems,inventoryRestocked:false})]);
       const customer=await client.query<any>("select email from customers where id=$1",[order.rows[0].customer_id]);
       if(customer.rows[0]?.email) await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','return_refund',$2,$3,$4::jsonb,'queued')",[storeId,customer.rows[0].email,"Return / refund for "+order.rows[0].order_number,JSON.stringify({orderId:id,orderNumber:order.rows[0].order_number,paymentStatus,reason:body?.reason||null})]);
       await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state,metadata) values($1,'admin','order.returned','order',$2,$3::jsonb,$4::jsonb,$5::jsonb)",[storeId,id,JSON.stringify(current),JSON.stringify(updated.rows[0]),JSON.stringify({reason:body?.reason||null})]);
