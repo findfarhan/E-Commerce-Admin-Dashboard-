@@ -29,20 +29,22 @@ export class OrdersService{
 
   async update(id:string,body:any){
     const storeId=await this.storeId();
-    const allowedStatus=["confirmed","processing","completed","canceled"];
+    const allowedStatus=["confirmed","processing","completed"];
     const allowedFulfillment=["unfulfilled","processing","fulfilled","returned"];
-    const allowedPayment=["pending","partially_paid","paid","partially_refunded","refunded","failed"];
+    const allowedPayment:string[]=[];
     const status=body?.status!==undefined?String(body.status):undefined;
     const fulfillment=body?.fulfillmentStatus!==undefined?String(body.fulfillmentStatus):undefined;
     const payment=body?.paymentStatus!==undefined?String(body.paymentStatus):undefined;
     if(status&&!allowedStatus.includes(status)) throw new BadRequestException("Invalid order status");
     if(fulfillment&&!allowedFulfillment.includes(fulfillment)) throw new BadRequestException("Invalid fulfillment status");
-    if(payment&&!allowedPayment.includes(payment)) throw new BadRequestException("Invalid payment status");
+    if(payment!==undefined) throw new BadRequestException("Payment status must be changed through a verified payment workflow");
 
     return this.db.transaction(async client=>{
       const current=await client.query<any>("select * from orders where id=$1 and store_id=$2 for update",[id,storeId]);
       if(!current.rowCount) throw new NotFoundException("Order not found");
       if(current.rows[0].status==="canceled") throw new ConflictException("Canceled orders cannot be edited");
+      if(current.rows[0].fulfillment_status==="returned") throw new ConflictException("Returned orders cannot be edited through generic update");
+      if(status==="completed" && current.rows[0].fulfillment_status!=="fulfilled") throw new ConflictException("Order must be fulfilled before completion");
       const nextStatus=status||current.rows[0].status;
       const nextFulfillment=fulfillment||current.rows[0].fulfillment_status;
       const nextPayment=payment||current.rows[0].payment_status;
@@ -139,7 +141,7 @@ export class OrdersService{
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_return',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order returned")]);
       }
 
-      const paymentStatus=current.payment_status==="paid"?"refunded":current.payment_status;
+      const paymentStatus=current.payment_status;
       const updated=await client.query<any>("update orders set fulfillment_status='returned',payment_status=$1,notes=coalesce($2,notes) where id=$3 returning *",[paymentStatus,body?.reason??null,id]);
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.returned',$2,$3::jsonb)",[id,"Order returned and inventory restored",JSON.stringify({reason:body?.reason||null,paymentStatus})]);
       const customer=await client.query<any>("select email from customers where id=$1",[order.rows[0].customer_id]);
