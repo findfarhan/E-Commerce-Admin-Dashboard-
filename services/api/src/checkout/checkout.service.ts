@@ -51,6 +51,21 @@ export class CheckoutService{
         priced.push({...variant,quantity,unitPrice,lineTotal:unitPrice*quantity});
       }
 
+      // The same variant can appear in multiple cart lines. Validate aggregate
+      // quantity before opening a session, not only line-by-line stock.
+      const quantities=new Map<string,{quantity:number;inventory:number;sku:string}>();
+      for(const line of priced){
+        const previous=quantities.get(String(line.variant_id));
+        quantities.set(String(line.variant_id),{
+          quantity:(previous?.quantity||0)+Number(line.quantity),
+          inventory:Number(line.inventory),
+          sku:String(line.sku),
+        });
+      }
+      for(const entry of quantities.values()){
+        if(entry.quantity>entry.inventory) throw new BadRequestException(entry.sku+" has only "+entry.inventory+" item(s) available");
+      }
+
       const subtotal=priced.reduce((sum,line)=>sum+line.lineTotal,0);
       const checkout=await client.query<any>("insert into checkout_sessions(store_id,status,currency,subtotal,payment_method) values($1,'open',$2,$3,'cod') returning id,status,currency,subtotal,expires_at,created_at",[store.id,store.currency||"PKR",subtotal]);
 
@@ -104,19 +119,20 @@ export class CheckoutService{
 
     let shippingMethod=String(body?.shippingMethod||"standard").trim();
 
-    const checkoutState=await this.db.query<any>("select subtotal from checkout_sessions where id=$1 and store_id=$2 and status='open' and expires_at>now() limit 1",[id,store.id]);
+    return this.db.transaction(async client=>{
+    const checkoutState=await client.query<any>("select subtotal from checkout_sessions where id=$1 and store_id=$2 and status='open' and expires_at>now() limit 1 for update",[id,store.id]);
     if(!checkoutState.rowCount) throw new NotFoundException("Open checkout not found");
     const subtotal=Number(checkoutState.rows[0].subtotal||0);
 
-    const weightResult=await this.db.query<any>("select coalesce(sum(cl.quantity*coalesce(v.weight_grams,p.weight_grams,0)),0)::int weight from checkout_lines cl join product_variants v on v.id=cl.variant_id join products p on p.id=cl.product_id where cl.checkout_id=$1",[id]);
+    const weightResult=await client.query<any>("select coalesce(sum(cl.quantity*coalesce(v.weight_grams,p.weight_grams,0)),0)::int weight from checkout_lines cl join product_variants v on v.id=cl.variant_id join products p on p.id=cl.product_id where cl.checkout_id=$1",[id]);
     const weight=Number(weightResult.rows[0]?.weight||0);
 
-    const zoneCount=await this.db.query<any>("select count(*)::int as count from shipping_zones where store_id=$1 and active=true",[store.id]);
-    const zone=await this.db.query<any>("select z.id,z.name from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by ((cardinality(z.cities)>0)::int*4+(cardinality(z.regions)>0)::int*2+(cardinality(z.countries)>0)::int) desc,z.created_at limit 1",[store.id,shipping.country,shipping.region,shipping.city]);
+    const zoneCount=await client.query<any>("select count(*)::int as count from shipping_zones where store_id=$1 and active=true",[store.id]);
+    const zone=await client.query<any>("select z.id,z.name from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by ((cardinality(z.cities)>0)::int*4+(cardinality(z.regions)>0)::int*2+(cardinality(z.countries)>0)::int) desc,z.created_at limit 1",[store.id,shipping.country,shipping.region,shipping.city]);
     if(Number(zoneCount.rows[0]?.count||0)>0&&!zone.rowCount) throw new BadRequestException("Delivery is not available for this address");
     let shippingAmount=0;
     if(zone.rowCount){
-      const rates=await this.db.query<any>("select * from shipping_rates where zone_id=$1 and active=true order by created_at",[zone.rows[0].id]);
+      const rates=await client.query<any>("select * from shipping_rates where zone_id=$1 and active=true order by created_at",[zone.rows[0].id]);
       const eligible=rates.rows.filter((r:any)=>(r.minimum_order===null||subtotal>=Number(r.minimum_order))&&(r.maximum_order===null||subtotal<=Number(r.maximum_order))&&(r.minimum_weight_grams===null||weight>=Number(r.minimum_weight_grams))&&(r.maximum_weight_grams===null||weight<=Number(r.maximum_weight_grams)));
       if(!eligible.length) throw new BadRequestException("No shipping rate is available for this order");
       const requested=shippingMethod.toLowerCase();
@@ -128,11 +144,11 @@ export class CheckoutService{
     let discountRow:any=null;
     const requestedCode=String(body?.discountCode||"").trim().toUpperCase();
     if(requestedCode){
-      const d=await this.db.query<any>("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1",[store.id,requestedCode]);
+      const d=await client.query<any>("select * from discount_codes where store_id=$1 and code=$2 and active=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) limit 1",[store.id,requestedCode]);
       discountRow=d.rows[0]||null;
       if(!discountRow) throw new BadRequestException("Discount code is invalid or expired");
     }else{
-      const d=await this.db.query<any>("select * from discount_codes where store_id=$1 and active=true and automatic=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) order by created_at limit 1",[store.id]);
+      const d=await client.query<any>("select * from discount_codes where store_id=$1 and active=true and automatic=true and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) order by created_at limit 1",[store.id]);
       discountRow=d.rows[0]||null;
     }
 
@@ -149,22 +165,25 @@ export class CheckoutService{
     if(discountRow){
       let eligibleSubtotal=subtotal;
       if(discountRow.applies_to==="product"&&Array.isArray(discountRow.product_ids)&&discountRow.product_ids.length){
-        const e=await this.db.query<any>("select coalesce(sum(line_total),0) amount from checkout_lines where checkout_id=$1 and product_id=any($2::uuid[])",[id,discountRow.product_ids]);
+        const e=await client.query<any>("select coalesce(sum(line_total),0) amount from checkout_lines where checkout_id=$1 and product_id=any($2::uuid[])",[id,discountRow.product_ids]);
         eligibleSubtotal=Number(e.rows[0]?.amount||0);
       }else if(discountRow.applies_to==="collection"&&Array.isArray(discountRow.collection_ids)&&discountRow.collection_ids.length){
-        const cart=await this.db.query<any>("select product_id,line_total from checkout_lines where checkout_id=$1",[id]);
+        const cart=await client.query<any>("select product_id,line_total from checkout_lines where checkout_id=$1",[id]);
         const productIds=[...new Set(cart.rows.map((x:any)=>String(x.product_id)))];
-        const matched=await this.collections.productIdsForCollections(discountRow.collection_ids,productIds);
+        const matched=await this.collections.productIdsForCollections(discountRow.collection_ids,productIds,client);
         const allowed=new Set(matched.map(String));
         eligibleSubtotal=cart.rows.filter((x:any)=>allowed.has(String(x.product_id))).reduce((sum:number,x:any)=>sum+Number(x.line_total||0),0);
       }
       discountAmount=discountRow.kind==="percentage"?eligibleSubtotal*Math.min(100,Number(discountRow.value))/100:discountRow.kind==="fixed"?Math.min(eligibleSubtotal,Number(discountRow.value)):0;
+      discountAmount=Math.round(Math.max(0,discountAmount)*100)/100;
       if(discountRow.kind==="free_shipping") shippingAmount=0;
     }
 
-    const taxable=await this.db.query<any>("select coalesce(sum(cl.line_total),0) amount from checkout_lines cl join products p on p.id=cl.product_id where cl.checkout_id=$1 and p.taxable=true",[id]);
-    let taxableBase=Math.max(0,Number(taxable.rows[0]?.amount||0)-discountAmount);
-    const taxRules=await this.db.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,shipping.country,shipping.region]);
+    const taxable=await client.query<any>("select coalesce(sum(cl.line_total),0) amount from checkout_lines cl join products p on p.id=cl.product_id where cl.checkout_id=$1 and p.taxable=true",[id]);
+    const taxableSubtotal=Number(taxable.rows[0]?.amount||0);
+    const taxableDiscount=subtotal>0?discountAmount*(taxableSubtotal/subtotal):0;
+    let taxableBase=Math.max(0,taxableSubtotal-taxableDiscount);
+    const taxRules=await client.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,shipping.country,shipping.region]);
     let taxAmount=0;
     let inclusiveTaxAmount=0;
     let exclusiveTaxAmount=0;
@@ -187,13 +206,14 @@ export class CheckoutService{
     const isGift=Boolean(body?.isGift);
     const giftMessage=isGift?String(body?.giftMessage||"").trim().slice(0,500):null;
 
-    const result=await this.db.query<any>(
+    const result=await client.query<any>(
       "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,terms_accepted_at=now(),discount_code=$11,discount_amount=$12,tax_amount=$13,inclusive_tax_amount=$14,exclusive_tax_amount=$15,total=$16,updated_at=now() where id=$17 and store_id=$18 and status='open' and expires_at>now() returning id,status,currency,subtotal,discount_code,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,terms_accepted_at,expires_at",
       [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,discountRow?.code||null,discountAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,id,store.id]
     );
 
     if(!result.rowCount) throw new NotFoundException("Open checkout not found");
     return {...result.rows[0],subtotal:Number(result.rows[0].subtotal),discount_amount:Number(result.rows[0].discount_amount||0),shipping_amount:Number(result.rows[0].shipping_amount||0),tax_amount:Number(result.rows[0].tax_amount||0),inclusive_tax_amount:Number(result.rows[0].inclusive_tax_amount||0),exclusive_tax_amount:Number(result.rows[0].exclusive_tax_amount||0),total:Number(result.rows[0].total||0)};
+    });
   }
 
   async complete(id:string,idempotencyKey?:string){

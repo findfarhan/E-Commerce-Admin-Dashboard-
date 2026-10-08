@@ -285,6 +285,7 @@ export class CommerceService{
     return this.db.transaction(async c=>{
       const orderR=await c.query<any>("select * from orders where id=$1 and store_id=$2 for update",[id,store.id]);if(!orderR.rowCount)throw new NotFoundException("Order not found");const order=orderR.rows[0];
       if(order.status==="canceled")throw new ConflictException("Canceled orders cannot be edited");
+      if(["fulfilled","returned"].includes(order.fulfillment_status))throw new ConflictException("Fulfilled or returned orders must use the return/exchange workflow");
       let fulfillmentLocationId=order.fulfillment_location_id||null;
       if(!fulfillmentLocationId){
         const location=await c.query<any>("select id from locations where store_id=$1 and active=true order by is_default desc,created_at limit 1",[store.id]);
@@ -326,6 +327,7 @@ export class CommerceService{
       }
 
       const items=await client.query<any>("select ri.*,oi.variant_id,oi.order_id from return_items ri join order_items oi on oi.id=ri.order_item_id where ri.return_id=$1",[id]);
+      if(items.rows.some((item:any)=>item.disposition==="restock")&&body?.inspectionConfirmed!==true) throw new BadRequestException("Confirm returned items have been inspected before restocking");
       for(const item of items.rows){
         if(item.disposition==="restock"&&item.variant_id){
           const variant=await client.query<any>("select inventory from product_variants where id=$1 for update",[item.variant_id]);
@@ -352,7 +354,7 @@ export class CommerceService{
       const capturedBefore=Number(ledgerBefore.rows[0].captured||0),refundedBefore=Number(ledgerBefore.rows[0].refunded||0);
       if(refund>Math.max(0,capturedBefore-refundedBefore)+0.01) throw new ConflictException("Refund exceeds the remaining captured payment");
       if(refund>0){
-        await client.query("insert into payment_transactions(store_id,order_id,provider,transaction_type,status,amount,currency,metadata) values($1,$2,$3,'refund','succeeded',$4,$5,$6::jsonb)",[store.id,ret.order_id,String(body?.provider||"manual"),refund,order.currency||"PKR",JSON.stringify({returnId:id})]);
+        await client.query("insert into payment_transactions(store_id,order_id,provider,transaction_type,status,amount,currency,metadata) values($1,$2,$3,'refund','pending',$4,$5,$6::jsonb)",[store.id,ret.order_id,String(body?.provider||"manual"),refund,order.currency||"PKR",JSON.stringify({returnId:id,refundStatus:"awaiting_confirmation"})]);
       }
 
       const ledgerAfter=await client.query<any>("select coalesce(sum(amount) filter(where status='succeeded' and transaction_type in ('capture','payment')),0) captured,coalesce(sum(amount) filter(where status='succeeded' and transaction_type='refund'),0) refunded from payment_transactions where order_id=$1",[ret.order_id]);
@@ -361,9 +363,8 @@ export class CommerceService{
       await client.query("update orders set payment_status=$1 where id=$2",[paymentStatus,ret.order_id]);
 
       const done=await client.query<any>("update returns set status='completed',refund_amount=$1,completed_at=now() where id=$2 returning *",[refund,id]);
-      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'return.completed','Return/exchange completed',$2::jsonb)",[ret.order_id,JSON.stringify({returnId:id,refund,paymentStatus})]);
-      const customer=await client.query<any>("select c.email from customers c join orders o on o.customer_id=c.id where o.id=$1",[ret.order_id]);
-      if(customer.rows[0]?.email) await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','return_refund',$2,$3,$4::jsonb,'queued')",[store.id,customer.rows[0].email,"Return / refund for "+order.order_number,JSON.stringify({orderId:ret.order_id,orderNumber:order.order_number,returnId:id,refund,paymentStatus})]);
+      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'return.completed','Return/exchange completed',$2::jsonb)",[ret.order_id,JSON.stringify({returnId:id,refundRequested:refund,paymentStatus,refundPending:refund>0})]);
+      // Do not send a refund-completed message before an actual refund is verified in the payment ledger.
       await this.logAudit(client,store.id,"return.completed","return",id,done.rows[0],{refund,paymentStatus});
       return {...done.rows[0],paymentStatus};
     });
@@ -416,7 +417,7 @@ export class CommerceService{
       for(const raw of requested){
         const orderItemId=String(raw?.orderItemId||"");
         const quantity=Number(raw?.quantity||0);
-        const disposition=String(raw?.disposition||"restock");
+        const disposition=String(raw?.disposition||"damaged");
         const exchangeVariantId=raw?.exchangeVariantId?String(raw.exchangeVariantId):null;
         const lineRefund=Math.max(0,this.num(raw?.refundAmount));
         if(!orderItemId||!Number.isInteger(quantity)||quantity<1) throw new BadRequestException("Return quantities must be positive whole numbers");
