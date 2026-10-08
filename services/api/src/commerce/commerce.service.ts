@@ -364,7 +364,6 @@ export class CommerceService{
 
       const done=await client.query<any>("update returns set status='completed',refund_amount=$1,completed_at=now() where id=$2 returning *",[refund,id]);
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'return.completed','Return/exchange completed',$2::jsonb)",[ret.order_id,JSON.stringify({returnId:id,refundRequested:refund,paymentStatus,refundPending:refund>0})]);
-      const customer=await client.query<any>("select c.email from customers c join orders o on o.customer_id=c.id where o.id=$1",[ret.order_id]);
       // Do not send a refund-completed message before an actual refund is verified in the payment ledger.
       await this.logAudit(client,store.id,"return.completed","return",id,done.rows[0],{refund,paymentStatus});
       return {...done.rows[0],paymentStatus};
