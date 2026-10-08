@@ -7,7 +7,6 @@ export async function updateOrderAction(id:string,formData:FormData){
     method:"PATCH",
     body:JSON.stringify({
       status:String(formData.get("status")||""),
-      paymentStatus:String(formData.get("paymentStatus")||""),
       fulfillmentStatus:String(formData.get("fulfillmentStatus")||""),
       trackingCarrier:String(formData.get("trackingCarrier")||"").trim(),
       trackingNumber:String(formData.get("trackingNumber")||"").trim(),
