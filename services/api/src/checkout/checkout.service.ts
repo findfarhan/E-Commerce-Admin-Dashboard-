@@ -83,9 +83,22 @@ export class CheckoutService{
     if(!checkout.rowCount) throw new NotFoundException("Checkout not found");
     const lines=await this.db.query<any>("select id,product_id,variant_id,sku_snapshot,title_snapshot,selected_options,quantity,unit_price,line_total from checkout_lines where checkout_id=$1 order by id",[id]);
     const row=checkout.rows[0];
+    // A completed checkout may be reopened via its saved URL. Only expose
+    // non-sensitive order confirmation fields; never customer details here.
+    let completedOrder:{orderNumber:string;total:number}|null=null;
+    if(row.status==="completed"&&row.completed_order_id){
+      const placed=await this.db.query<{order_number:string;total:string}>(
+        "select order_number,total from orders where id=$1 and store_id=$2 limit 1",
+        [row.completed_order_id,store.id]
+      );
+      if(placed.rowCount){
+        completedOrder={orderNumber:placed.rows[0].order_number,total:Number(placed.rows[0].total)};
+      }
+    }
     return {
       id:row.id,
       status:row.status,
+      completed_order:completedOrder,
       currency:row.currency,
       subtotal:Number(row.subtotal),
       discount_code:row.discount_code||null,
