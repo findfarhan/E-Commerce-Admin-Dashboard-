@@ -3,7 +3,7 @@ import {notFound} from "next/navigation";
 import {PageHeader} from "@/components/page-header";
 import {StatusPill} from "@/components/status-pill";
 import {adminRequest,getAdminOrderDetail} from "@/lib/admin-api";
-import {cancelOrderAction,recordPaymentAction,returnOrderAction,updateOrderAction} from "../actions";
+import {cancelOrderAction,recordPaymentAction,updateOrderAction} from "../actions";
 
 const money=(value:any)=>"Rs. "+Number(value||0).toLocaleString("en-PK");
 
@@ -17,7 +17,6 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
   const order=detail.order;
   const update=updateOrderAction.bind(null,id);
   const cancel=cancelOrderAction.bind(null,id);
-  const returnOrder=returnOrderAction.bind(null,id);
   const recordPayment=recordPaymentAction.bind(null,id);
 
   return <>
@@ -81,13 +80,13 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
     </section>
 
     <section className="dashboard-grid lower">
-      <form action={update} className="panel settings-panel">
+      {order.status!=="canceled"&&order.fulfillment_status!=="returned"?<form action={update} className="panel settings-panel">
         <section className="settings-section">
           <h2>Operational state</h2>
           <div className="field-grid">
             <label className="field"><span>Order status</span><select name="status" defaultValue={order.status}><option>confirmed</option><option>processing</option><option>completed</option></select></label>
-            <label className="field"><span>Payment status</span><select name="paymentStatus" defaultValue={order.payment_status}><option>pending</option><option>partially_paid</option><option>paid</option><option>partially_refunded</option><option>refunded</option><option>failed</option></select></label>
-            <label className="field"><span>Fulfillment</span><select name="fulfillmentStatus" defaultValue={order.fulfillment_status}><option>unfulfilled</option><option>processing</option><option>fulfilled</option><option>returned</option></select></label>
+            <div className="field"><span>Payment status (ledger controlled)</span><p><b>{order.payment_status}</b></p><small>Use Record transaction above to reconcile payments and refunds.</small></div>
+            <label className="field"><span>Fulfillment</span><select name="fulfillmentStatus" defaultValue={order.fulfillment_status}><option>unfulfilled</option><option>processing</option><option>fulfilled</option></select></label>
             <label className="field"><span>Tracking carrier</span><input name="trackingCarrier" defaultValue={order.tracking_carrier||""} placeholder="TCS, DHL, Leopards..."/></label>
             <label className="field"><span>Tracking number</span><input name="trackingNumber" defaultValue={order.tracking_number||""}/></label>
             <label className="field" style={{gridColumn:"1 / -1"}}><span>Tracking URL</span><input name="trackingUrl" type="url" defaultValue={order.tracking_url||""} placeholder="https://..."/></label>
@@ -96,13 +95,13 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
           {order.tracking_number&&<p style={{marginTop:8}}>Tracking: <b>{order.tracking_carrier||"Carrier"}</b> · {order.tracking_number}{order.tracking_url&&<> · <a href={order.tracking_url} target="_blank" rel="noreferrer">Open tracking ↗</a></>}</p>}
           <button className="primary-button" type="submit">Save order</button>
         </section>
-      </form>
+      </form>:<article className="panel"><h2>Order locked</h2><p>Canceled or returned orders cannot be modified through generic operations.</p></article>}
 
       <article className="panel">
         <div className="panel-head"><div><span>TIMELINE</span><h2>Order events</h2></div></div>
         <div className="activity-list">{(detail.events||[]).map((event:any)=><div className="activity-item" key={event.id}><span>•</span><div><b>{event.event_type}</b><p>{event.message}</p></div><time>{new Date(event.created_at).toLocaleString("en-PK")}</time></div>)}</div>
-        {order.status!=="canceled"&&order.fulfillment_status!=="fulfilled"&&<form action={cancel} style={{marginTop:20}}><label className="field"><span>Cancellation reason</span><input name="reason" placeholder="Customer request, duplicate order..."/></label><button className="secondary-button" type="submit">Cancel & restore inventory</button></form>}
-        {order.fulfillment_status==="fulfilled"&&<form action={returnOrder} style={{marginTop:20}}><label className="field"><span>Return reason</span><input name="reason" placeholder="Returned by customer, damaged in transit..."/></label><button className="secondary-button" type="submit">Mark returned & restock</button></form>}
+        {order.status!=="canceled"&& !["fulfilled","returned"].includes(order.fulfillment_status) && !["paid","partially_paid","partially_refunded"].includes(order.payment_status) &&<form action={cancel} style={{marginTop:20}}><label className="field"><span>Cancellation reason</span><input name="reason" placeholder="Customer request, duplicate order..."/></label><button className="secondary-button" type="submit">Cancel & restore inventory</button></form>}
+        {order.fulfillment_status==="fulfilled"&&<div style={{marginTop:20}}><p>Returns must be recorded as inspected cases; the order is not automatically restocked or refunded.</p><Link className="secondary-button" href={"/orders/"+id+"/edit"}>Create return or exchange case →</Link></div>}
       </article>
     </section>
   </>;
