@@ -49,7 +49,7 @@ export async function createReturnCaseAction(orderId:string,formData:FormData){
   await adminMutation("/v1/admin/commerce/returns",{method:"POST",body:JSON.stringify({orderId,returnType:String(formData.get("returnType")||"return"),reason:String(formData.get("reason")||"").trim()||null,refundAmount:Number(formData.get("refundAmount")||0),notes:String(formData.get("notes")||"").trim()||null,items})});
   revalidatePath("/returns");revalidatePath("/orders/"+orderId);
 }
-export async function completeReturnCaseAction(returnId:string){await adminMutation("/v1/admin/commerce/returns/"+returnId+"/complete",{method:"POST",body:"{}"});revalidatePath("/returns");revalidatePath("/orders");}
+export async function completeReturnCaseAction(returnId:string,formData:FormData){await adminMutation("/v1/admin/commerce/returns/"+returnId+"/complete",{method:"POST",body:JSON.stringify({inspectionConfirmed:formData.get("inspectionConfirmed")==="on"})});revalidatePath("/returns");revalidatePath("/orders");}
 
 
 export async function recordPaymentAction(orderId:string,formData:FormData){
