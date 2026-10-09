@@ -148,7 +148,17 @@ export class RecoveryService {
         method:"POST",
         headers:{"Authorization":"Bearer "+process.env.RESEND_API_KEY,"Content-Type":"application/json","Idempotency-Key":"jewelry-recovery-"+due.checkout_id+"-"+due.step},
         body:JSON.stringify({from:process.env.RECOVERY_FROM_EMAIL,to:[due.email_snapshot],subject:due.step===1?"You left something in your jewelry bag":"Your jewelry selection is still here",
-        text:"You asked us to send checkout reminders. If you still want your jewelry, review current availability and prices here:\n"+link+"\n\nPrices and stock may change.\nStop these reminders: "+unsub}),
+        text:"You asked us to send checkout reminders. If you still want your jewelry, review current availability and prices here:\\n"+link+"\\n\\nPrices and stock may change.\\nStop these reminders: "+unsub,
+        html:`<!doctype html><html lang="en"><body style="margin:0;background:#f7f3ed;font-family:Arial,sans-serif;color:#242128">
+          <main style="max-width:540px;margin:36px auto;background:#fff;padding:45px 36px;border:1px solid #e0d9cc">
+          <p style="color:#8b6f43;font-size:11px;letter-spacing:.16em">JEWELRY · YOUR SELECTION</p>
+          <h1 style="font-family:Georgia,serif;font-weight:normal;font-size:40px;line-height:1.13;margin:25px 0">A little something worth a second look.</h1>
+          <p style="font-size:14px;line-height:1.8;color:#575158">You asked us to remind you about your jewelry selection. The pieces you liked may still be available.</p>
+          <a href="${link}" style="display:inline-block;background:#242128;color:white;text-decoration:none;padding:17px 23px;margin:19px 0;font-size:13px">Review current availability ↗</a>
+          <p style="font-size:12px;line-height:1.7;color:#78717b">Prices, stock, delivery and applicable taxes will be checked again before checkout. There is no obligation to order.</p>
+          <hr style="border:0;border-top:1px solid #e5ded4;margin:28px 0">
+          <p style="font-size:11px;line-height:1.7;color:#817a83">You received this because you opted in to checkout reminders. <a style="color:#786392" href="${unsub}">Stop these reminders</a>.</p>
+          </main></body></html>`}),
         signal:AbortSignal.timeout(15000)
       });
       if(!result.ok)throw new Error("Email provider rejected request ("+result.status+")");
