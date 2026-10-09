@@ -57,7 +57,7 @@ export class BundlesService{
     return this.describe(r.rows[0],false);
   }
   private async describe(row:BundleRow,publicOnly:boolean){
-    const query="select bc.variant_id,bc.quantity,v.price,v.inventory,v.status as variant_status,v.sku,p.title as product_title,p.handle as product_handle,p.status as product_status,p.published_at from jewelry_bundle_components bc join product_variants v on v.id=bc.variant_id join products p on p.id=v.product_id where bc.bundle_id=$1 order by bc.position,bc.id";
+    const query="select bc.variant_id,bc.quantity,v.price,v.inventory,v.status as variant_status,v.sku,p.title as product_title,p.handle as product_handle,p.status as product_status,p.published_at,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options from jewelry_bundle_components bc join product_variants v on v.id=bc.variant_id join products p on p.id=v.product_id where bc.bundle_id=$1 order by bc.position,bc.id";
     const result=await this.db.query<any>(query,[row.id]);
     const components=result.rows.map((x:any)=>({...x,variantId:x.variant_id,quantity:Number(x.quantity),price:Number(x.price),inventory:Number(x.inventory)}));
     const gross=money(components.reduce((sum:number,c:any)=>sum+c.price*c.quantity,0));
@@ -68,7 +68,7 @@ export class BundlesService{
       discountKind:row.discount_kind,discountValue:Number(row.discount_value),
       startsAt:row.starts_at,endsAt:row.ends_at,
       components,regularPrice:gross,bundlePrice:money(gross-discount),saving:discount,
-      maxQuantity:eligible?Math.min(...components.map((c:any)=>Math.floor(c.inventory/c.quantity))):0,eligible};
+      maxQuantity:eligible?Math.min(25,...components.map((c:any)=>Math.min(Math.floor(c.inventory/c.quantity),Math.floor(25/c.quantity)))):0,eligible};
   }
   async listPublic(){
     const storeId=await this.storeId();
