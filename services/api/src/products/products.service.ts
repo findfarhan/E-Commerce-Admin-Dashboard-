@@ -167,6 +167,7 @@ export class ProductsService{
         name:p.title,
         price:"Rs. "+Number(p.price_amount).toLocaleString("en-PK"),
         priceAmount:Number(p.price_amount),
+        inventory:Number(p.inventory||0),
         currency:"PKR",
         tag:p.tag||"",
         image:primaryUrl||this.delivery.sourceUrl(primary||{})||"",
