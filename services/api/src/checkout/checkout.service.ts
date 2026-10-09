@@ -510,7 +510,7 @@ export class CheckoutService{
       if(recoverySchema.rows[0]?.ready){
         await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1 and status='pending'",[id]);
         if(checkout.recovered_from_checkout_id){
-          await client.query("update checkout_recoveries set status='recovered',recovered_order_id=$1,recovered_checkout_id=$2,next_send_at=null,updated_at=now() where checkout_id=$3 and status='pending'",[order.id,id,checkout.recovered_from_checkout_id]);
+          await client.query("update checkout_recoveries set status='recovered',recovered_order_id=$1,recovered_checkout_id=$2,next_send_at=null,updated_at=now() where checkout_id=$3 and recovered_checkout_id=$2 and status in ('pending','expired','suppressed')",[order.id,id,checkout.recovered_from_checkout_id]);
         }
       }
 
