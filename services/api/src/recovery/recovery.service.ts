@@ -84,7 +84,7 @@ export class RecoveryService {
  async dashboard(){
   const storeId=await this.store();
   const [totals,rows,steps]=await Promise.all([
-    this.db.query<any>("select count(*)::int total,count(*) filter(where status='pending')::int pending,count(*) filter(where status='recovered')::int recovered,count(*) filter(where status='suppressed')::int suppressed,count(*) filter(where status='expired')::int expired,coalesce(sum(o.total) filter(where cr.status='recovered'),0) recovered_value from checkout_recoveries cr left join orders o on o.id=cr.recovered_order_id where cr.store_id=$1 and cr.created_at>=now()-interval '30 days'",[storeId]),
+    this.db.query<any>("select count(*)::int total,count(*) filter(where cr.status='pending')::int pending,count(*) filter(where cr.status='recovered')::int recovered,count(*) filter(where cr.status='suppressed')::int suppressed,count(*) filter(where cr.status='expired')::int expired,coalesce(sum(o.total) filter(where cr.status='recovered'),0) recovered_value from checkout_recoveries cr left join orders o on o.id=cr.recovered_order_id where cr.store_id=$1 and cr.created_at>=now()-interval '30 days'",[storeId]),
     this.db.query<any>("select cr.checkout_id,cr.email_snapshot,cr.consent_at,cr.status,cr.send_step,cr.next_send_at,cr.last_sent_at,cr.updated_at,c.subtotal,c.total,c.expires_at from checkout_recoveries cr join checkout_sessions c on c.id=cr.checkout_id where cr.store_id=$1 order by cr.created_at desc limit 150",[storeId]),
     this.db.query<any>("select step,status,count(*)::int count from checkout_recovery_attempts where store_id=$1 and attempted_at>=now()-interval '30 days' group by step,status order by step,status",[storeId])
   ]);
@@ -148,7 +148,7 @@ export class RecoveryService {
         method:"POST",
         headers:{"Authorization":"Bearer "+process.env.RESEND_API_KEY,"Content-Type":"application/json","Idempotency-Key":"jewelry-recovery-"+due.checkout_id+"-"+due.step},
         body:JSON.stringify({from:process.env.RECOVERY_FROM_EMAIL,to:[due.email_snapshot],subject:due.step===1?"You left something in your jewelry bag":"Your jewelry selection is still here",
-        text:"You asked us to send checkout reminders. If you still want your jewelry, review current availability and prices here:\\n"+link+"\\n\\nPrices and stock may change.\\nStop these reminders: "+unsub,
+        text:"You asked us to send checkout reminders. If you still want your jewelry, review current availability and prices here:\n"+link+"\n\nPrices and stock may change.\nStop these reminders: "+unsub,
         html:`<!doctype html><html lang="en"><body style="margin:0;background:#f7f3ed;font-family:Arial,sans-serif;color:#242128">
           <main style="max-width:540px;margin:36px auto;background:#fff;padding:45px 36px;border:1px solid #e0d9cc">
           <p style="color:#8b6f43;font-size:11px;letter-spacing:.16em">JEWELRY · YOUR SELECTION</p>
