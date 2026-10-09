@@ -99,9 +99,9 @@ export class StorefrontService{
 
     return {
       id:p.id,slug:p.handle,name:p.title,price:"Rs. "+Number(p.price_amount).toLocaleString("en-PK"),
-      priceAmount:Number(p.price_amount),currency:"PKR",tag:p.tag||"",image:primary,secondaryImage:secondary,
+      priceAmount:Number(p.price_amount),inventory:Number(p.inventory||0),currency:"PKR",tag:p.tag||"",image:primary,secondaryImage:secondary,
       category:p.category||"Jewelry",story:this.descriptionText(p.description),descriptionHtml:this.descriptionHtml(p.description),material:p.material||"",
-      availability:Number(p.inventory)>0?"InStock":"OutOfStock",featured:p.featured,
+      availability:Number(p.inventory)>0?"InStock":"OutOfStock",featured:p.featured,productType:p.product_type||"",tags:detail.product.tags||[],
       options:(detail.options||[]).map((o:any)=>({id:o.id,name:o.name,isVisual:o.is_visual,values:o.values})),
       variants,
       mediaSets:(detail.mediaSets||[]).map((m:any)=>({id:m.id,name:m.name,matchOptions:m.match_options,isDefault:m.is_default})),
