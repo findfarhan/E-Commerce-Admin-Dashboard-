@@ -2,6 +2,8 @@ import "reflect-metadata";
 import {NestFactory} from "@nestjs/core";
 import {FastifyAdapter,NestFastifyApplication} from "@nestjs/platform-fastify";
 import {AppModule} from "./app.module";
+import {CloudflareR2Storage} from "./storage/cloudflare-r2.storage";
+import {runR2ImageSmoke} from "./storage/r2-image-smoke";
 
 async function bootstrap(){
   const app=await NestFactory.create<NestFastifyApplication>(
@@ -37,5 +39,9 @@ async function bootstrap(){
   app.enableShutdownHooks();
   const port=Number(process.env.PORT||3001);
   await app.listen(port,"0.0.0.0");
+  // One-time opt-in smoke test: no new HTTP endpoints or catalog writes.
+  if(process.env.R2_IMAGE_SMOKE_TEST==="1"){
+    void runR2ImageSmoke(app.get(CloudflareR2Storage));
+  }
 }
 bootstrap();
