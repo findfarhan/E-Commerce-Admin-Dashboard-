@@ -19,6 +19,9 @@ const {CollectionsService}=require("../dist/collections/collections.service.js")
 const {BundlesService}=require("../dist/bundles/bundles.service.js");
 const {GiftPackagingService}=require("../dist/gift-packaging/gift-packaging.service.js");
 const {OrdersService}=require("../dist/orders/orders.service.js");
+const {RecoveryService}=require("../dist/recovery/recovery.service.js");
+const {AnalyticsService}=require("../dist/analytics/analytics.service.js");
+const {createHmac,randomUUID}=require("node:crypto");
 const {DatabaseService}=require("../dist/database/database.service.js");
 
 const testUrl=process.env.TEST_DATABASE_URL;
@@ -43,6 +46,10 @@ const bundles=new BundlesService(db,{listStorefront:async()=>[]});
 const packaging=new GiftPackagingService(db);
 const checkout=new CheckoutService(db,new CollectionsService(db),bundles,packaging);
 const orders=new OrdersService(db);
+process.env.RECOVERY_SIGNING_SECRET="qa-regression-test-secret-only-do-not-use-production-00000000";
+process.env.RECOVERY_EMAIL_ENABLED="false";
+const recovery=new RecoveryService(db,checkout);
+const analytics=new AnalyticsService(db);
 let fixture;
 
 async function one(sql,params=[]){
@@ -119,6 +126,83 @@ after(async()=>{
   await Promise.allSettled([db.onModuleDestroy(),pool.end()]);
 });
 
+
+
+test("anonymous analytics events require explicit consent and deduplicate retries",async()=>{
+ const sessionId=randomUUID(),eventId=randomUUID();
+ assert.equal((await analytics.record({type:"product_view",eventId,sessionId,analyticsConsent:false})).recorded,false);
+ assert.equal((await one("select count(*)::int n from analytics_events")).n,0);
+ for(let i=0;i<2;i++)await analytics.record({type:"product_view",eventId,sessionId,analyticsConsent:true,productHandle:"regression-ring",path:"/product/regression-ring",source:"direct",device:"mobile"});
+ assert.equal((await one("select count(*)::int n from analytics_events")).n,1);
+ await assert.rejects(()=>analytics.record({type:"product_view",eventId:randomUUID(),sessionId,analyticsConsent:true,productHandle:"some-email@example.com"}),/Invalid product handle/);
+ const summary=await analytics.overview();
+ assert.equal(summary.funnel.productViews,1);
+});
+
+test("checkouts are never subscribed to recovery emails without opt-in",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(session.id,customer());
+ assert.equal((await one("select count(*)::int n from checkout_recoveries")).n,0);
+ assert.equal((await one("select count(*)::int n from checkout_recovery_attempts")).n,0);
+});
+
+test("explicit opted-in recovery is suppressed after shopper opts out on quote update",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
+ const row=await one("select status,send_step from checkout_recoveries where checkout_id=$1",[session.id]);
+ assert.equal(row.status,"pending");assert.equal(row.send_step,0);
+ await checkout.setCustomer(session.id,customer({recoveryOptIn:false}));
+ assert.equal((await one("select status from checkout_recoveries where checkout_id=$1",[session.id])).status,"suppressed");
+});
+
+test("no recovery provider means no queued or sent emails",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
+ await pool.query("update checkout_recoveries set next_send_at=now()-interval '2 hours' where checkout_id=$1",[session.id]);
+ await recovery.runRecovery();
+ assert.equal((await one("select count(*)::int n from checkout_recovery_attempts")).n,0);
+});
+
+test("recovery token creates fresh priced checkout and attributes only a confirmed order",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
+ await pool.query("update checkout_sessions set status='expired',expires_at=now()-interval '1 day' where id=$1",[session.id]);
+ const token=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("recover\\n"+session.id+"\\nqa-regression@example.invalid").digest("hex");
+ const {checkoutId}=await recovery.redeem(session.id,token);
+ assert.notEqual(checkoutId,session.id);
+ const second=await recovery.redeem(session.id,token);
+ assert.equal(second.checkoutId,checkoutId);
+ assert.equal((await one("select status from checkout_recoveries where checkout_id=$1",[session.id])).status,"pending");
+ const quote=await checkout.setCustomer(checkoutId,customer());
+ const placed=await checkout.complete(checkoutId,"qa-recovery-order-123",{expectedTotal:quote.total});
+ const result=await one("select status,recovered_order_id from checkout_recoveries where checkout_id=$1",[session.id]);
+ assert.equal(result.status,"recovered");
+ assert.equal(result.recovered_order_id,placed.order.id);
+ const data=await recovery.dashboard();
+ assert.equal(data.summary.recovered,1);
+ assert.equal(data.summary.recoveredValue,placed.order.total);
+});
+
+test("unsubscribe suppresses all pending reminders and blocks linked recovery",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
+ const token=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("unsubscribe\\n"+session.id+"\\nqa-regression@example.invalid").digest("hex");
+ await recovery.unsubscribe(session.id,token);
+ const row=await one("select status from checkout_recoveries where checkout_id=$1",[session.id]);
+ assert.equal(row.status,"suppressed");
+ assert.equal((await one("select count(*)::int n from checkout_recovery_optouts")).n,1);
+ const redeem=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("recover\\n"+session.id+"\\nqa-regression@example.invalid").digest("hex");
+ await assert.rejects(()=>recovery.redeem(session.id,redeem),/no longer recoverable/);
+});
+
+test("successful regular COD order suppresses any pending reminders",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ const quote=await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
+ await checkout.complete(session.id,"qa-recovery-suppress-123",{expectedTotal:quote.total});
+ const row=await one("select status,next_send_at from checkout_recoveries where checkout_id=$1",[session.id]);
+ assert.equal(row.status,"suppressed");
+ assert.equal(row.next_send_at,null);
+});
 
 async function seedPackaging(overrides={}){
   const body={title:"Gift Box QA",sku:"QA-GIFT-BOX",price:450,inventory:2,weightGrams:75,taxable:false,status:"active",position:0,description:"Test only",...overrides};
