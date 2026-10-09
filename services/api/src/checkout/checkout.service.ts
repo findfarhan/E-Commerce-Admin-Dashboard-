@@ -2,12 +2,13 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException,Servi
 import {DatabaseService} from "../database/database.service";
 import {CollectionsService} from "../collections/collections.service";
 import {BundlesService} from "../bundles/bundles.service";
+import {GiftPackagingService} from "../gift-packaging/gift-packaging.service";
 
 type RequestedLine={slug?:string;variantId?:string;quantity?:number};
 
 @Injectable()
 export class CheckoutService{
-  constructor(private readonly db:DatabaseService,private readonly collections:CollectionsService,private readonly bundles:BundlesService){}
+  constructor(private readonly db:DatabaseService,private readonly collections:CollectionsService,private readonly bundles:BundlesService,private readonly packaging:GiftPackagingService){}
 
   private async store(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
@@ -135,6 +136,10 @@ export class CheckoutService{
       discount_amount:Number(row.discount_amount||0),
       bundle_discount_amount:Number(row.bundle_discount_amount||0),
       bundles:bundleRows.rows.map((b:any)=>({title:b.title_snapshot,quantity:Number(b.quantity),regularPrice:Number(b.gross_amount),saving:Number(b.discount_amount),components:b.component_snapshot})),
+      gift_packaging_id:row.gift_packaging_id||null,
+      gift_packaging_price:Number(row.gift_packaging_price||0),
+      gift_packaging_title:row.gift_packaging_title_snapshot||null,
+      gift_packaging_sku:row.gift_packaging_sku_snapshot||null,
       shipping_amount:Number(row.shipping_amount||0),
       tax_amount:Number(row.tax_amount||0),
       inclusive_tax_amount:Number(row.inclusive_tax_amount||0),
@@ -168,11 +173,15 @@ export class CheckoutService{
     const checkoutState=await client.query<any>("select subtotal from checkout_sessions where id=$1 and store_id=$2 and status='open' and expires_at>now() limit 1 for update",[id,store.id]);
     if(!checkoutState.rowCount) throw new NotFoundException("Open checkout not found");
     const subtotal=Number(checkoutState.rows[0].subtotal||0);
+    const selectedPackagingId=String(body?.giftPackagingId||"").trim()||null;
+    if(selectedPackagingId&&!body?.isGift)throw new BadRequestException("Enable gift order to select packaging");
+    const giftPackaging=await this.packaging.quote(client,store.id,selectedPackagingId);
+    const packagingPrice=Number(giftPackaging?.price||0);
     const bundleQuote=await this.bundles.checkoutDiscount(client,store.id,id);
     if(bundleQuote.bundleCount&&String(body?.discountCode||"").trim())throw new BadRequestException("Coupon codes cannot be combined with bundle offers");
 
     const weightResult=await client.query<any>("select coalesce(sum(cl.quantity*coalesce(v.weight_grams,p.weight_grams,0)),0)::int weight from checkout_lines cl join product_variants v on v.id=cl.variant_id join products p on p.id=cl.product_id where cl.checkout_id=$1",[id]);
-    const weight=Number(weightResult.rows[0]?.weight||0);
+    const weight=Number(weightResult.rows[0]?.weight||0)+Number(giftPackaging?.weightGrams||0);
 
     const zoneCount=await client.query<any>("select count(*)::int as count from shipping_zones where store_id=$1 and active=true",[store.id]);
     const zone=await client.query<any>("select z.id,z.name from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by ((cardinality(z.cities)>0)::int*4+(cardinality(z.regions)>0)::int*2+(cardinality(z.countries)>0)::int) desc,z.created_at limit 1",[store.id,shipping.country,shipping.region,shipping.city]);
@@ -231,7 +240,7 @@ export class CheckoutService{
     const taxableDiscount=bundleQuote.bundleCount
       ?bundleQuote.taxableDiscount
       :(subtotal>0?discountAmount*(taxableSubtotal/subtotal):0);
-    let taxableBase=Math.max(0,taxableSubtotal-taxableDiscount);
+    let taxableBase=Math.max(0,taxableSubtotal-taxableDiscount)+(giftPackaging?.taxable?packagingPrice:0);
     const taxRules=await client.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,shipping.country,shipping.region]);
     let taxAmount=0;
     let inclusiveTaxAmount=0;
@@ -251,18 +260,19 @@ export class CheckoutService{
     taxAmount=Math.round(taxAmount*100)/100;
     inclusiveTaxAmount=Math.round(inclusiveTaxAmount*100)/100;
     exclusiveTaxAmount=Math.round(exclusiveTaxAmount*100)/100;
-    const total=Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount);
+    const total=Math.max(0,subtotal-discountAmount+shippingAmount+packagingPrice+exclusiveTaxAmount);
     const isGift=Boolean(body?.isGift);
     const giftMessage=isGift?String(body?.giftMessage||"").trim().slice(0,500):null;
 
     const bundlesInstalled=await this.bundles.schemaReady(client);
+    const packagingInstalled=await this.packaging.schemaReady(client);
     const result=await client.query<any>(
-      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,terms_accepted_at=now(),discount_code=$11,discount_amount=$12,tax_amount=$13,inclusive_tax_amount=$14,exclusive_tax_amount=$15,total=$16"+(bundlesInstalled?",bundle_discount_amount=$19":"")+",updated_at=now() where id=$17 and store_id=$18 and status='open' and expires_at>now() returning id,status,currency,subtotal,discount_code,discount_amount"+(bundlesInstalled?",bundle_discount_amount":"")+",shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,terms_accepted_at,expires_at",
-      [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,discountRow?.code||null,discountAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,id,store.id,...(bundlesInstalled?[bundleQuote.discount]:[])]
+      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,terms_accepted_at=now(),discount_code=$11,discount_amount=$12,tax_amount=$13,inclusive_tax_amount=$14,exclusive_tax_amount=$15,total=$16"+(bundlesInstalled?",bundle_discount_amount=$19":"")+(packagingInstalled?",gift_packaging_id=$"+(bundlesInstalled?20:19)+",gift_packaging_price=$"+(bundlesInstalled?21:20)+",gift_packaging_sku_snapshot=$"+(bundlesInstalled?22:21)+",gift_packaging_title_snapshot=$"+(bundlesInstalled?23:22):"")+",updated_at=now() where id=$17 and store_id=$18 and status='open' and expires_at>now() returning id,status,currency,subtotal,discount_code,discount_amount"+(bundlesInstalled?",bundle_discount_amount":"")+(packagingInstalled?",gift_packaging_price,gift_packaging_sku_snapshot,gift_packaging_title_snapshot":"")+",shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,terms_accepted_at,expires_at",
+      [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,discountRow?.code||null,discountAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,id,store.id,...(bundlesInstalled?[bundleQuote.discount]:[]),...(packagingInstalled?[selectedPackagingId,packagingPrice,giftPackaging?.sku||null,giftPackaging?.title||null]:[])]
     );
 
     if(!result.rowCount) throw new NotFoundException("Open checkout not found");
-    return {...result.rows[0],subtotal:Number(result.rows[0].subtotal),discount_amount:Number(result.rows[0].discount_amount||0),shipping_amount:Number(result.rows[0].shipping_amount||0),tax_amount:Number(result.rows[0].tax_amount||0),inclusive_tax_amount:Number(result.rows[0].inclusive_tax_amount||0),exclusive_tax_amount:Number(result.rows[0].exclusive_tax_amount||0),total:Number(result.rows[0].total||0)};
+    return {...result.rows[0],subtotal:Number(result.rows[0].subtotal),discount_amount:Number(result.rows[0].discount_amount||0),gift_packaging_price:packagingPrice,shipping_amount:Number(result.rows[0].shipping_amount||0),tax_amount:Number(result.rows[0].tax_amount||0),inclusive_tax_amount:Number(result.rows[0].inclusive_tax_amount||0),exclusive_tax_amount:Number(result.rows[0].exclusive_tax_amount||0),total:Number(result.rows[0].total||0)};
     });
   }
 
@@ -274,7 +284,6 @@ export class CheckoutService{
       const checkoutResult=await client.query<any>("select * from checkout_sessions where id=$1 and store_id=$2 for update",[id,store.id]);
       if(!checkoutResult.rowCount) throw new NotFoundException("Checkout not found");
       const checkout=checkoutResult.rows[0];
-
       if(checkout.status==="completed"&&checkout.completed_order_id){
         const existing=await client.query<any>("select id,order_number,status,payment_status,fulfillment_status,total from orders where id=$1",[checkout.completed_order_id]);
         return {ok:true,idempotent:true,order:existing.rows[0]};
@@ -288,6 +297,15 @@ export class CheckoutService{
 
       const prior=await client.query<any>("select id,order_number,status,payment_status,fulfillment_status,total from orders where store_id=$1 and external_id=$2 limit 1",[store.id,"checkout:"+id+":"+idempotencyKey]);
       if(prior.rowCount) return {ok:true,idempotent:true,order:prior.rows[0]};
+
+      if(checkout.gift_packaging_id&&!checkout.is_gift)throw new ConflictException("Gift packaging requires a gift order");
+      const giftPackaging=await this.packaging.quote(client,store.id,checkout.gift_packaging_id||null,true);
+      const packagingPrice=Number(giftPackaging?.price||0);
+      if(giftPackaging&&(Math.round(Number(checkout.gift_packaging_price||0)*100)!==Math.round(packagingPrice*100)
+        ||checkout.gift_packaging_sku_snapshot!==giftPackaging.sku
+        ||checkout.gift_packaging_title_snapshot!==giftPackaging.title)){
+        throw new ConflictException("Gift packaging details changed. Please review checkout again.");
+      }
 
       const lines=await client.query<any>("select * from checkout_lines where checkout_id=$1 order by id",[id]);
       if(!lines.rowCount) throw new BadRequestException("Checkout has no items");
@@ -333,7 +351,7 @@ export class CheckoutService{
       if(locations.rowCount&&!fulfillmentLocationId) throw new ConflictException("No fulfillment location has enough stock for the complete order");
 
       const shippingAddress=checkout.shipping_address||{};
-      const totalWeight=locked.reduce((sum:number,entry:any)=>sum+Number(entry.line.quantity)*Number(entry.variant.weight_grams??entry.variant.product_weight_grams??0),0);
+      const totalWeight=locked.reduce((sum:number,entry:any)=>sum+Number(entry.line.quantity)*Number(entry.variant.weight_grams??entry.variant.product_weight_grams??0),0)+Number(giftPackaging?.weightGrams||0);
       const zoneCount=await client.query<any>("select count(*)::int as count from shipping_zones where store_id=$1 and active=true",[store.id]);
       const zone=await client.query<any>("select z.id,z.name from shipping_zones z where z.store_id=$1 and z.active=true and (cardinality(z.countries)=0 or $2=any(z.countries)) and (cardinality(z.regions)=0 or $3=any(z.regions)) and (cardinality(z.cities)=0 or $4=any(z.cities)) order by ((cardinality(z.cities)>0)::int*4+(cardinality(z.regions)>0)::int*2+(cardinality(z.countries)>0)::int) desc,z.created_at limit 1",[store.id,String(shippingAddress.country||"Pakistan"),String(shippingAddress.region||""),String(shippingAddress.city||"")]);
       if(Number(zoneCount.rows[0]?.count||0)>0&&!zone.rowCount) throw new ConflictException("Delivery is no longer available for this address");
@@ -378,7 +396,7 @@ export class CheckoutService{
       const taxableDiscount=bundleQuote.bundleCount
       ?bundleQuote.taxableDiscount
       :(subtotal>0?discountAmount*(taxableSubtotal/subtotal):0);
-      const taxableBase=Math.max(0,taxableSubtotal-taxableDiscount);
+      const taxableBase=Math.max(0,taxableSubtotal-taxableDiscount)+(giftPackaging?.taxable?packagingPrice:0);
       const taxRules=await client.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,String(shippingAddress.country||"Pakistan"),String(shippingAddress.region||"")]);
       let inclusiveTaxAmount=0,exclusiveTaxAmount=0;
       for(const rule of taxRules.rows){
@@ -389,10 +407,10 @@ export class CheckoutService{
       inclusiveTaxAmount=Math.round(inclusiveTaxAmount*100)/100;
       exclusiveTaxAmount=Math.round(exclusiveTaxAmount*100)/100;
       const taxAmount=Math.round((inclusiveTaxAmount+exclusiveTaxAmount)*100)/100;
-      const total=Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount);
+      const total=Math.max(0,subtotal-discountAmount+shippingAmount+packagingPrice+exclusiveTaxAmount);
       // Bundles may only complete against an explicit customer-reviewed
       // amount. Keep optional quotes for existing non-bundle integrations.
-      if(bundleQuote.bundleCount&&body?.expectedTotal===undefined)
+      if((bundleQuote.bundleCount||giftPackaging)&&body?.expectedTotal===undefined)
         throw new BadRequestException("A reviewed final total is required for jewelry sets");
       if(body?.expectedTotal!==undefined){
         const expectedTotal=Number(body.expectedTotal);
@@ -403,6 +421,7 @@ export class CheckoutService{
       }
 
       const bundlesInstalled=await this.bundles.schemaReady(client);
+      const packagingInstalled=await this.packaging.schemaReady(client);
       await client.query("update checkout_sessions set subtotal=$1,discount_amount=$2,shipping_amount=$3,tax_amount=$4,inclusive_tax_amount=$5,exclusive_tax_amount=$6,total=$7,shipping_method=$8"+(bundlesInstalled?",bundle_discount_amount=$10":"")+",updated_at=now() where id=$9",[subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,finalShippingMethod,id,...(bundlesInstalled?[bundleQuote.discount]:[])]);
 
       const email=String(checkout.customer_email).toLowerCase();
@@ -415,10 +434,11 @@ export class CheckoutService{
       const numberResult=await client.query<{value:string}>("select 'JS-'||lpad(nextval('jewelry_order_number_seq')::text,6,'0') as value");
       const orderNumber=numberResult.rows[0].value;
       const orderResult=await client.query<any>(
-        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code,fulfillment_location_id"+(bundlesInstalled?",bundle_discount_amount":"")+") values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19,$20"+(bundlesInstalled?",$21":"")+") returning *",
-        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),finalShippingMethod,Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId,...(bundlesInstalled?[bundleQuote.discount]:[])]
+        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code,fulfillment_location_id"+(bundlesInstalled?",bundle_discount_amount":"")+(packagingInstalled?",gift_packaging_id,gift_packaging_price,gift_packaging_sku_snapshot,gift_packaging_title_snapshot":"")+") values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19,$20"+(bundlesInstalled?",$21":"")+(packagingInstalled?(bundlesInstalled?",$22,$23,$24,$25":",$21,$22,$23,$24"):"")+") returning *",
+        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),finalShippingMethod,Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId,...(bundlesInstalled?[bundleQuote.discount]:[]),...(packagingInstalled?[giftPackaging?.id||null,packagingPrice,giftPackaging?.sku||null,giftPackaging?.title||null]:[])]
       );
       const order=orderResult.rows[0];
+      if(giftPackaging)await this.packaging.consume(client,store.id,order.id,giftPackaging.id);
 
       for(const entry of locked){
         const before=Number(entry.variant.inventory);
@@ -454,7 +474,7 @@ export class CheckoutService{
         "on conflict(order_id) do nothing",
         [store.id,order.id,id,affiliateBasis,order.currency,email,checkout.customer_phone]
       );
-      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift),discountCode:checkout.discount_code||null})]);
+      await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift),giftPackagingSku:giftPackaging?.sku||null,discountCode:checkout.discount_code||null})]);
       await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[store.id,"New order "+orderNumber,"New storefront order for "+order.currency+" "+Number(order.total).toLocaleString(),order.id]);
       await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','order_confirmation',$2,$3,$4::jsonb,'queued')",[store.id,email,"Order "+orderNumber+" confirmation",JSON.stringify({orderId:order.id,orderNumber,total:Number(order.total),currency:order.currency,name:checkout.customer_name})]);
       await client.query("update checkout_sessions set status='completed',subtotal=$1,completed_order_id=$2,updated_at=now() where id=$3",[subtotal,order.id,id]);

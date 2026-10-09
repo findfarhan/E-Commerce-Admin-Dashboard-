@@ -50,7 +50,14 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
           <p><b>{order.customer_name}</b><br/>{order.customer_email}<br/>{order.customer_phone}</p>
           <p>{order.shipping_address?.line1}<br/>{order.shipping_address?.line2}<br/>{order.shipping_address?.city} {order.shipping_address?.region}<br/>{order.shipping_address?.country}</p>
           {order.terms_accepted_at&&<p style={{marginTop:14,fontSize:12}}>Terms accepted: <b>{new Date(order.terms_accepted_at).toLocaleString("en-PK")}</b></p>}
-          {order.is_gift&&<div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--line)"}}><span className="tag">GIFT ORDER</span><h3 style={{margin:"12px 0 6px"}}>Private gift message</h3><p>{order.gift_message||"No message supplied."}</p></div>}
+          {order.is_gift&&<div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--line)"}}>
+            <span className="tag">GIFT ORDER</span>
+            <h3 style={{margin:"12px 0 6px"}}>Gift preparation</h3>
+            <p><b>Presentation:</b> {order.gift_packaging_title_snapshot||"Standard presentation"}</p>
+            {order.gift_packaging_sku_snapshot&&<p><b>Packaging SKU:</b> {order.gift_packaging_sku_snapshot} · <b>Charge:</b> {money(order.gift_packaging_price)}</p>}
+            <p><b>Private gift message:</b> {order.gift_message||"No message supplied."}</p>
+            <small>The message is for fulfillment only, not printed automatically.</small>
+          </div>}
         </section>
       </article>
     </section>

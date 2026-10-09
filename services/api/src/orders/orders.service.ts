@@ -112,6 +112,22 @@ export class OrdersService{
         await client.query("insert into inventory_movements(store_id,variant_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,actor) values($1,$2,$3,'order_cancel',$4,$5,$6,$7,'admin')",[storeId,item.variant_id,id,Number(item.quantity),before,after,String(body?.reason||"Order canceled")]);
       }
 
+      // Restore any separately tracked gift-box stock exactly once. This remains
+      // optional for older orders and before migration 025 is installed.
+      const packagingSchema=await client.query<{ready:boolean}>("select to_regclass('public.gift_packaging_movements') is not null as ready");
+      if(packagingSchema.rows[0]?.ready&&order.rows[0].gift_packaging_id){
+        const optionId=String(order.rows[0].gift_packaging_id);
+        const sale=await client.query("select 1 from gift_packaging_movements where order_id=$1 and gift_packaging_id=$2 and movement_type='order_sale' limit 1",[id,optionId]);
+        if(sale.rowCount){
+          const option=await client.query<any>("select inventory from gift_packaging_options where id=$1 and store_id=$2 for update",[optionId,storeId]);
+          if(option.rowCount){
+            const before=Number(option.rows[0].inventory);
+            await client.query("update gift_packaging_options set inventory=inventory+1,updated_at=now() where id=$1 and store_id=$2",[optionId,storeId]);
+            await client.query("insert into gift_packaging_movements(store_id,gift_packaging_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,actor) values($1,$2,$3,'order_cancel',1,$4,$5,'admin') on conflict(order_id,gift_packaging_id,movement_type) do nothing",[storeId,optionId,id,before,before+1]);
+          }
+        }
+      }
+
       const updated=await client.query<any>("update orders set status='canceled',fulfillment_status='unfulfilled',notes=coalesce($1,notes) where id=$2 returning *",[body?.reason??null,id]);
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.canceled',$2,$3::jsonb)",[id,"Order canceled and inventory restored",JSON.stringify({reason:body?.reason||null})]);
       const customer=await client.query<any>("select email from customers where id=$1",[order.rows[0].customer_id]);
