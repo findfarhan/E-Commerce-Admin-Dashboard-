@@ -395,3 +395,55 @@ html[data-theme="light"]{
 .product-metafield-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.product-metafield-grid>div:last-child{grid-column:1/-1}.shopify-seo-form{display:flex;flex-direction:column;gap:12px}.shopify-seo-form label{display:flex;flex-direction:column;gap:6px}.shopify-seo-form label>span{font-size:11px;font-weight:600}
 @media(max-width:1050px){.shopify-collection-layout{grid-template-columns:1fr}.shopify-collection-side{display:grid;grid-template-columns:1fr 1fr}.shopify-save-bar{grid-column:1/-1;position:static}.product-overview-card{grid-template-columns:64px 1fr}.product-overview-metrics{grid-column:1/-1}.variant-generation-bar{grid-template-columns:1fr}.variant-generation-bar form{flex-wrap:wrap}.metafield-definition-header,.metafield-definition-row{grid-template-columns:minmax(180px,1fr) 170px 100px}.definition-capabilities{grid-column:2/4}.shopify-inline-form{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.shopify-admin-field-grid,.collection-type-choice,.definition-type-grid,.product-metafield-grid{grid-template-columns:1fr}.shopify-collection-side{display:flex}.smart-condition-row{grid-template-columns:1fr 1fr}.smart-condition-row input{grid-column:1/3}.collection-picker-toolbar{align-items:stretch;flex-direction:column}.shopify-search{min-width:0;width:100%}.metafield-definition-header{display:none}.metafield-definition-row{grid-template-columns:1fr;padding:12px 14px;gap:7px}.definition-capabilities{grid-column:auto}.product-overview-card{grid-template-columns:52px 1fr}.product-overview-image{width:52px;height:52px}.product-overview-metrics{grid-template-columns:1fr 1fr}.variant-create-form{position:fixed;left:12px;right:12px;top:100px;width:auto}.shopify-inline-form{grid-template-columns:1fr}}
+
+
+/* Affiliate Marketing / operator console */
+.affiliate-admin-intro{display:grid;grid-template-columns:1.4fr 1fr;gap:32px;align-items:center;padding:34px 38px;margin:23px 0;border:1px solid var(--border,var(--line,#2c3443));border-radius:19px;background:linear-gradient(110deg,rgba(132,115,255,.14),transparent 75%),var(--surface,var(--panel,#141b26))}
+.affiliate-admin-intro h2{font-size:clamp(27px,3vw,43px);font-weight:600;margin:12px 0 10px;line-height:1.08}
+.affiliate-admin-intro p{max-width:680px;line-height:1.7;opacity:.78}
+.affiliate-admin-indicator{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#b4a5ff}
+.affiliate-admin-intro-link{display:grid;gap:11px;padding:25px;border:1px solid rgba(140,150,170,.25);border-radius:15px}
+.affiliate-admin-intro-link>span,.affiliate-admin-intro-link>small{opacity:.6;font-size:11px;letter-spacing:.08em}
+.affiliate-admin-intro-link a{color:#b9a6ff;font-weight:700;overflow-wrap:anywhere}
+.affiliate-admin-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-bottom:22px}
+.affiliate-admin-stats article{display:grid;gap:9px;padding:22px;min-width:0}
+.affiliate-admin-stats small{text-transform:uppercase;letter-spacing:.12em;font-size:11px;opacity:.68}
+.affiliate-admin-stats strong{font-size:clamp(23px,3vw,37px);line-height:1.2;overflow-wrap:anywhere}
+.affiliate-admin-stats span{font-size:12px;opacity:.64}
+.affiliate-admin-settings,.affiliate-admin-section{padding:25px;margin-bottom:22px}
+.affiliate-admin-settings-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:end;gap:13px}
+.affiliate-admin-settings-form>label{display:grid;gap:8px;min-width:0}
+.affiliate-admin-settings-form label span{font-size:12px;opacity:.78}
+.affiliate-admin-settings-form input:not([type=checkbox]),.affiliate-admin-inline input,.affiliate-admin-inline select,
+.affiliate-admin-reverse input,.affiliate-admin-transfer input{width:100%;min-height:43px;background:var(--card,#141a22);color:inherit;border:1px solid rgba(130,141,158,.36);border-radius:8px;padding:10px}
+.affiliate-admin-toggle{display:flex!important;flex-direction:row;align-items:center;gap:11px;grid-column:1/3}
+.affiliate-admin-settings-form>.primary-button{justify-self:start;min-height:44px}
+.affiliate-admin-fineprint{font-size:12px;opacity:.67;line-height:1.65;margin:16px 0}
+.affiliate-admin-section .panel-head{margin:0 0 18px;align-items:center;display:flex;justify-content:space-between;gap:16px}
+.affiliate-admin-section .data-table td{vertical-align:middle;min-width:125px}
+.affiliate-admin-section .data-table td small{display:block;opacity:.65;margin-top:5px;font-size:11px;line-height:1.6}
+.affiliate-admin-section .data-table td code{font-size:11px;letter-spacing:.1em}
+.affiliate-admin-inline{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.affiliate-admin-inline select{min-width:125px}
+.affiliate-admin-inline label{min-width:75px;max-width:88px}
+.affiliate-admin-inline label span{display:block;margin-bottom:5px;font-size:10px}
+.affiliate-admin-inline button{min-height:42px}
+.affiliate-admin-status{display:inline-block;border:1px solid rgba(145,157,175,.4);padding:6px 10px;border-radius:99px;font-size:11px;margin-bottom:7px}
+.affiliate-admin-status.good{border-color:#5ba88f;color:#70c4a3}
+.affiliate-admin-status.bad{border-color:#e28181;color:#e7a0a0}
+.affiliate-admin-status.pending{opacity:.75}
+.affiliate-admin-reverse{display:flex;gap:7px;align-items:center;margin-top:8px}
+.affiliate-admin-reverse input{min-width:180px}
+.affiliate-admin-payouts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.affiliate-admin-payout-card{min-width:0;background:rgba(119,128,151,.075);border:1px solid rgba(140,150,171,.23);padding:24px;border-radius:14px}
+.affiliate-admin-payout-card h3{font-size:23px;margin:0 0 5px}
+.affiliate-admin-payout-card small,.affiliate-admin-payout-card p{font-size:12px;line-height:1.6;opacity:.7}
+.affiliate-admin-commission-choice{display:grid;gap:8px;margin:16px 0}
+.affiliate-admin-commission-choice label{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:12px;padding:10px;border:1px solid rgba(130,141,158,.2);border-radius:8px;font-size:12px}
+.affiliate-admin-commission-choice b{white-space:nowrap}
+.affiliate-admin-transfer{display:grid;gap:8px;margin:15px 0}
+.affiliate-admin-transfer>span{font-size:12px;opacity:.75}
+.affiliate-admin-transfer-confirm{display:flex;align-items:start;gap:10px;margin-bottom:17px;font-size:12px;line-height:1.55}
+.affiliate-admin-section .secondary-button{cursor:pointer}
+@media(max-width:1100px){.affiliate-admin-stats{grid-template-columns:repeat(2,1fr)}.affiliate-admin-settings-form{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.affiliate-admin-intro{grid-template-columns:1fr;padding:25px}.affiliate-admin-stats,.affiliate-admin-settings-form,.affiliate-admin-payouts{grid-template-columns:1fr}.affiliate-admin-toggle{grid-column:1}.affiliate-admin-section,.affiliate-admin-settings{padding:14px}.affiliate-admin-section .table-wrap{overflow:auto}.affiliate-admin-inline{flex-direction:column;align-items:stretch}}
