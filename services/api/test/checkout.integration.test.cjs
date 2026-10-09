@@ -185,7 +185,7 @@ test("changed component prices invalidate the customer's bundle checkout quote",
   const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
   const review=await checkout.setCustomer(session.id,customer());
   await pool.query("update product_variants set price=80000 where id=$1",[fixture.variantId]);
-  await assert.rejects(()=>checkout.complete(session.id,"qa-bundle-price-123",{expectedTotal:review.total}),/final total has changed/);
+  await assert.rejects(()=>checkout.complete(session.id,"qa-bundle-price-123",{expectedTotal:review.total}),/Bundle pricing changed/);
   assert.equal(await count("orders"),0);
 });
 
