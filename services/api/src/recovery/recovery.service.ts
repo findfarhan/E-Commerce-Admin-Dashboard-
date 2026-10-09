@@ -84,14 +84,25 @@ export class RecoveryService {
  async dashboard(){
   const storeId=await this.store();
   const [totals,rows,steps]=await Promise.all([
-    this.db.query<any>("select count(*)::int total,count(*) filter(where status='pending')::int pending,count(*) filter(where status='recovered')::int recovered,count(*) filter(where status='suppressed')::int suppressed,coalesce(sum(o.total) filter(where cr.status='recovered'),0) recovered_value from checkout_recoveries cr left join orders o on o.id=cr.recovered_order_id where cr.store_id=$1 and cr.created_at>=now()-interval '30 days'",[storeId]),
+    this.db.query<any>("select count(*)::int total,count(*) filter(where status='pending')::int pending,count(*) filter(where status='recovered')::int recovered,count(*) filter(where status='suppressed')::int suppressed,count(*) filter(where status='expired')::int expired,coalesce(sum(o.total) filter(where cr.status='recovered'),0) recovered_value from checkout_recoveries cr left join orders o on o.id=cr.recovered_order_id where cr.store_id=$1 and cr.created_at>=now()-interval '30 days'",[storeId]),
     this.db.query<any>("select cr.checkout_id,cr.email_snapshot,cr.consent_at,cr.status,cr.send_step,cr.next_send_at,cr.last_sent_at,cr.updated_at,c.subtotal,c.total,c.expires_at from checkout_recoveries cr join checkout_sessions c on c.id=cr.checkout_id where cr.store_id=$1 order by cr.created_at desc limit 150",[storeId]),
     this.db.query<any>("select step,status,count(*)::int count from checkout_recovery_attempts where store_id=$1 and attempted_at>=now()-interval '30 days' group by step,status order by step,status",[storeId])
   ]);
   const summary=totals.rows[0];
-  return {summary:{total:Number(summary.total||0),pending:Number(summary.pending||0),recovered:Number(summary.recovered||0),suppressed:Number(summary.suppressed||0),recoveredValue:Number(summary.recovered_value||0),deliveryEnabled:this.enabled()},items:rows.rows.map(x=>({...x,subtotal:Number(x.subtotal),total:Number(x.total)})),steps:steps.rows};
+  return {summary:{total:Number(summary.total||0),pending:Number(summary.pending||0),recovered:Number(summary.recovered||0),suppressed:Number(summary.suppressed||0),expired:Number(summary.expired||0),recoveredValue:Number(summary.recovered_value||0),deliveryEnabled:this.enabled()},items:rows.rows.map(x=>({...x,subtotal:Number(x.subtotal),total:Number(x.total)})),steps:steps.rows};
  }
  private enabled(){return process.env.RECOVERY_EMAIL_ENABLED==="true"&&Boolean(process.env.RESEND_API_KEY&&process.env.RECOVERY_FROM_EMAIL&&this.secret().length>=32);}
+ @Interval(3600000)
+ async expireRecoveryConsent(){
+  if(!this.db.isConfigured())return;
+  try{
+   const ready=await this.db.query<{ready:boolean}>("select to_regclass('public.checkout_recoveries') is not null as ready");
+   if(!ready.rows[0]?.ready)return;
+   const storeId=await this.store();
+   await this.db.query("update checkout_recoveries set status='expired',next_send_at=null,updated_at=now() where store_id=$1 and status='pending' and consent_at<now()-interval '7 days'",[storeId]);
+  }catch(error){this.log.warn("Recovery consent cleanup failed: "+(error instanceof Error?error.message:"unknown"));}
+ }
+
  @Interval(900000)
  async runRecovery(){
   if(this.running||!this.enabled()||!this.db.isConfigured())return;
