@@ -1,5 +1,6 @@
 import {BadRequestException,Injectable,NotFoundException} from "@nestjs/common";
 import {DatabaseService} from "../database/database.service";
+import {Interval} from "@nestjs/schedule";
 
 type EventType="page_view"|"product_view"|"add_to_cart"|"gift_finder_opened"|"gift_finder_results"|"bundle_viewed";
 const EVENTS=new Set<string>(["page_view","product_view","add_to_cart","gift_finder_opened","gift_finder_results","bundle_viewed"]);
@@ -38,6 +39,14 @@ export class AnalyticsService{
     [storeId,event,session,type,product,pathname,channel,device]
   );
   return {ok:true,recorded:true};
+ }
+ @Interval(86400000)
+ async expireOldAnonymousEvents(){
+  if(!this.db.isConfigured())return;
+  const ready=await this.db.query<{ready:boolean}>("select to_regclass('public.analytics_events') is not null as ready");
+  if(!ready.rows[0]?.ready)return;
+  const storeId=await this.store();
+  await this.db.query("delete from analytics_events where store_id=$1 and occurred_at<now()-interval '90 days'",[storeId]);
  }
  async overview(){
   const storeId=await this.store();
