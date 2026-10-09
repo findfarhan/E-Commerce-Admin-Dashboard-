@@ -129,7 +129,7 @@ export class BundlesService{
     if(!validUuid(id)||!Number.isInteger(quantity)||quantity<1||quantity>25)throw new BadRequestException("Invalid bundle quantity");
     const bundle=await client.query<BundleRow>("select * from jewelry_bundles where id=$1 and store_id=$2 and status='active' and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) for share",[id,storeId]);
     if(!bundle.rowCount)throw new ConflictException("Bundle is unavailable");
-    const detail=await client.query<any>("select bc.variant_id,bc.quantity,v.sku,v.price,v.inventory,v.status,v.product_id,p.title,p.handle,p.store_id as product_store_id,p.status as product_status,p.published_at,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options from jewelry_bundle_components bc join product_variants v on v.id=bc.variant_id join products p on p.id=v.product_id where bc.bundle_id=$1 order by bc.position,bc.id",[id]);
+    const detail=await client.query<any>("select bc.variant_id,bc.quantity,v.sku,v.price,v.inventory,v.status,v.product_id,p.title,p.handle,p.store_id as product_store_id,p.status as product_status,p.taxable,p.published_at,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options from jewelry_bundle_components bc join product_variants v on v.id=bc.variant_id join products p on p.id=v.product_id where bc.bundle_id=$1 order by bc.position,bc.id",[id]);
     if(detail.rowCount<2)throw new ConflictException("Bundle is incomplete");
     const components=detail.rows.map((v:any)=>({...v,quantity:Number(v.quantity)}));
     for(const c of components){
@@ -142,7 +142,7 @@ export class BundlesService{
   }
   async checkoutDiscount(client:PoolClient,storeId:string,checkoutId:string){
     const rows=await client.query<any>("select * from checkout_bundle_allocations where checkout_id=$1 order by id",[checkoutId]);
-    let discount=0;
+    let discount=0,taxableDiscount=0;
     for(const row of rows.rows){
       const current=await this.purchase(client,storeId,String(row.bundle_id),Number(row.quantity));
       // PostgreSQL jsonb normalizes object-key ordering. Compare stable
@@ -162,7 +162,11 @@ export class BundlesService{
         throw new ConflictException("Bundle pricing changed. Please restart checkout.");
       }
       discount=money(discount+current.discountAmount);
+      const taxableGross=current.components.filter((c:any)=>c.taxable!==false)
+        .reduce((sum:number,c:any)=>sum+Number(c.price)*Number(c.quantity),0)*current.quantity;
+      taxableDiscount=money(taxableDiscount+(current.grossAmount>0
+        ?current.discountAmount*(taxableGross/current.grossAmount):0));
     }
-    return {bundleCount:rows.rowCount,discount};
+    return {bundleCount:rows.rowCount,discount,taxableDiscount};
   }
 }
