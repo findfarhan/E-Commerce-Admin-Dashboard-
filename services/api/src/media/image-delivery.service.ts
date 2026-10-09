@@ -24,6 +24,9 @@ export class ImageDeliveryService{
     return Boolean(process.env.CLOUDFLARE_IMAGE_RESIZING_BASE_URL);
   }
 
+  // Render stored, already optimized R2 files without a Vercel image proxy.
+  renditionPublicUrl(objectKey:string){return this.storage.publicUrl(objectKey);}
+
   sourceUrl(media:{source_url?:string|null;master_object_key?:string|null}){
     if(media.source_url) return media.source_url;
     if(media.master_object_key) return this.storage.publicUrl(media.master_object_key);
