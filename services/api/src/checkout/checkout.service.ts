@@ -284,15 +284,6 @@ export class CheckoutService{
       const checkoutResult=await client.query<any>("select * from checkout_sessions where id=$1 and store_id=$2 for update",[id,store.id]);
       if(!checkoutResult.rowCount) throw new NotFoundException("Checkout not found");
       const checkout=checkoutResult.rows[0];
-      if(checkout.gift_packaging_id&&!checkout.is_gift)throw new ConflictException("Gift packaging requires a gift order");
-      const giftPackaging=await this.packaging.quote(client,store.id,checkout.gift_packaging_id||null,true);
-      const packagingPrice=Number(giftPackaging?.price||0);
-      if(giftPackaging&&(Math.round(Number(checkout.gift_packaging_price||0)*100)!==Math.round(packagingPrice*100)
-        ||checkout.gift_packaging_sku_snapshot!==giftPackaging.sku
-        ||checkout.gift_packaging_title_snapshot!==giftPackaging.title)){
-        throw new ConflictException("Gift packaging details changed. Please review checkout again.");
-      }
-
       if(checkout.status==="completed"&&checkout.completed_order_id){
         const existing=await client.query<any>("select id,order_number,status,payment_status,fulfillment_status,total from orders where id=$1",[checkout.completed_order_id]);
         return {ok:true,idempotent:true,order:existing.rows[0]};
@@ -306,6 +297,15 @@ export class CheckoutService{
 
       const prior=await client.query<any>("select id,order_number,status,payment_status,fulfillment_status,total from orders where store_id=$1 and external_id=$2 limit 1",[store.id,"checkout:"+id+":"+idempotencyKey]);
       if(prior.rowCount) return {ok:true,idempotent:true,order:prior.rows[0]};
+
+      if(checkout.gift_packaging_id&&!checkout.is_gift)throw new ConflictException("Gift packaging requires a gift order");
+      const giftPackaging=await this.packaging.quote(client,store.id,checkout.gift_packaging_id||null,true);
+      const packagingPrice=Number(giftPackaging?.price||0);
+      if(giftPackaging&&(Math.round(Number(checkout.gift_packaging_price||0)*100)!==Math.round(packagingPrice*100)
+        ||checkout.gift_packaging_sku_snapshot!==giftPackaging.sku
+        ||checkout.gift_packaging_title_snapshot!==giftPackaging.title)){
+        throw new ConflictException("Gift packaging details changed. Please review checkout again.");
+      }
 
       const lines=await client.query<any>("select * from checkout_lines where checkout_id=$1 order by id",[id]);
       if(!lines.rowCount) throw new BadRequestException("Checkout has no items");
