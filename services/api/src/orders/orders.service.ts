@@ -24,7 +24,8 @@ export class OrdersService{
     if(!order.rowCount) throw new NotFoundException("Order not found");
     const items=await this.db.query<any>("select * from order_items where order_id=$1 order by id",[id]);
     const events=await this.db.query<any>("select * from order_events where order_id=$1 order by created_at",[id]);
-    return {order:order.rows[0],items:items.rows,events:events.rows};
+    const bundles=await this.db.query<any>("select title_snapshot,component_snapshot,quantity,gross_amount,discount_amount from order_bundle_allocations where order_id=$1 order by created_at",[id]);
+    return {order:order.rows[0],items:items.rows,events:events.rows,bundles:bundles.rows};
   }
 
   async update(id:string,body:any){
