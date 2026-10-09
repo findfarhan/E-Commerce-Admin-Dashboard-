@@ -140,6 +140,13 @@ export class RecoveryService {
     });
     if(!due)break;
     if(due.skipped)continue;
+    // Re-check immediately before delivery because customers can complete
+    // checkout or unsubscribe while a claimed attempt is being prepared.
+    const current=await this.db.query<any>("select cr.status,c.status as checkout_status,coalesce(o.email_digest is not null,false) as opted_out from checkout_recoveries cr join checkout_sessions c on c.id=cr.checkout_id left join checkout_recovery_optouts o on o.store_id=cr.store_id and o.email_digest=$3 where cr.checkout_id=$1 and cr.store_id=$2",[due.checkout_id,due.store_id,this.emailDigest(due.email_snapshot)]);
+    if(!current.rowCount||current.rows[0].status!=="pending"||current.rows[0].checkout_status==="completed"||current.rows[0].opted_out){
+      await this.db.query("update checkout_recovery_attempts set status='skipped',completed_at=now() where id=$1",[due.attemptId]);
+      continue;
+    }
     try{
       const storefront=(process.env.RECOVERY_STOREFRONT_URL||"https://jewelry-store-lime.vercel.app").replace(/\/$/,"");
       const link=storefront+"/recover?checkout="+encodeURIComponent(due.checkout_id)+"&token="+this.signature("recover",due.checkout_id,due.email_snapshot);
