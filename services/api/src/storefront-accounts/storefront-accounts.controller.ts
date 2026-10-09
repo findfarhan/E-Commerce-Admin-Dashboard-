@@ -15,6 +15,7 @@ export class StorefrontAccountsController{
   @Post("logout") logout(@Headers("authorization") auth?:string){return this.accounts.logout(this.token(auth));}
   @Get("me") me(@Headers("authorization") auth?:string){return this.accounts.me(this.token(auth));}
   @Patch("profile") profile(@Headers("authorization") auth:string,@Body() body:any){return this.accounts.profile(this.token(auth),body);}
+  @Post("change-password") changePassword(@Headers("authorization") auth:string,@Body() body:any){return this.accounts.changePassword(this.token(auth),body);}
   @Get("addresses") addresses(@Headers("authorization") auth:string){return this.accounts.addresses(this.token(auth));}
   @Post("addresses") createAddress(@Headers("authorization") auth:string,@Body() body:any){return this.accounts.saveAddress(this.token(auth),body);}
   @Patch("addresses/:id") updateAddress(@Headers("authorization") auth:string,@Param("id") id:string,@Body() body:any){return this.accounts.saveAddress(this.token(auth),body,id);}
