@@ -1,0 +1,43 @@
+.gift-admin-page{padding-bottom:70px;min-width:0}
+.gift-admin-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:22px 0}
+.gift-admin-stats article{padding:23px;border:1px solid var(--line);background:var(--card,rgba(130,130,140,.08));border-radius:13px;display:grid;gap:9px}
+.gift-admin-stats span,.gift-admin-stats small{font-size:12px;opacity:.65}
+.gift-admin-stats strong{font-size:clamp(22px,2.7vw,35px)}
+.gift-admin-layout{display:grid;grid-template-columns:minmax(265px,.36fr) minmax(0,1fr);gap:18px;align-items:start}
+.gift-admin-layout>.panel{padding:clamp(20px,2.5vw,30px);min-width:0}
+.gift-admin-library{position:sticky;top:100px}
+.gift-admin-library header,.gift-admin-editor>header{display:flex;justify-content:space-between;gap:15px;align-items:start}
+.gift-admin-library header span,.gift-admin-editor header span,.gift-admin-preview>span{font-size:11px;letter-spacing:.12em;opacity:.62}
+.gift-admin-library h2,.gift-admin-editor h2{font-size:clamp(22px,2.7vw,35px);margin:9px 0}
+.gift-admin-library>p,.gift-admin-editor>header p{color:var(--muted);font-size:13px;line-height:1.7}
+.gift-admin-list{margin-top:24px;display:grid;gap:11px;max-height:67vh;overflow:auto}
+.gift-admin-row{border:1px solid var(--line);background:rgba(134,129,164,.05);width:100%;padding:18px;border-radius:10px;display:grid;gap:9px;text-align:left;color:inherit;cursor:pointer}
+.gift-admin-row:hover,.gift-admin-row.selected{border-color:#ad8fd5;background:rgba(166,131,221,.13)}
+.gift-admin-row-top{display:flex;gap:10px;justify-content:space-between}
+.gift-admin-row-top b{font-size:14px}
+.gift-admin-row-top small{font-size:11px;text-transform:uppercase;opacity:.7}
+.gift-admin-row-info{font-size:12px;opacity:.7}
+.gift-admin-no-items,.gift-admin-empty{padding:30px;font-size:13px;line-height:1.7}
+.gift-admin-editor header>div{max-width:530px}
+.gift-admin-editor header button{min-height:44px;white-space:nowrap}
+.gift-admin-notice{padding:13px;margin:19px 0 0;border:1px solid var(--line);border-radius:10px;line-height:1.6;font-size:13px}
+.gift-admin-notice.error{color:#da8591}.gift-admin-notice.success{color:#8dbba7}
+.gift-admin-fields{border-top:1px solid var(--line);padding-top:27px;margin-top:26px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 17px}
+.gift-admin-fields .wide{grid-column:1/-1}
+.gift-admin-fields label{display:grid;gap:8px;min-width:0}
+.gift-admin-fields label>span{font-size:13px;font-weight:600}
+.gift-admin-fields :is(input:not([type=checkbox]),select,textarea){min-width:0;width:100%;min-height:47px;padding:11px 13px;border:1px solid var(--line);background:var(--card,rgba(130,130,150,.08));color:inherit;border-radius:8px;font:inherit;font-size:14px}
+.gift-admin-fields textarea{resize:vertical}
+.gift-admin-fields .gift-admin-checkbox{display:flex;align-items:center;gap:12px;align-self:end;line-height:1.6}
+.gift-admin-checkbox input{width:18px;height:18px;accent-color:#a78bda}
+.gift-admin-preview{margin-top:27px;padding:22px;border:1px solid var(--line);background:rgba(143,136,173,.09);border-radius:12px}
+.gift-admin-preview>div{display:flex;justify-content:space-between;gap:20px;margin-top:15px}
+.gift-admin-preview strong{font-size:20px}
+.gift-admin-preview b{font-size:18px}
+.gift-admin-preview p,.gift-admin-preview small,.gift-admin-editor footer p{font-size:12px;line-height:1.7;color:var(--muted)}
+.gift-admin-editor footer{border-top:1px solid var(--line);padding-top:20px;margin-top:28px;display:flex;justify-content:space-between;gap:20px;align-items:center}
+.gift-admin-footer-actions{display:flex;gap:10px;flex-wrap:wrap}
+.gift-admin-editor button:disabled{opacity:.5;cursor:not-allowed}
+.gift-admin-editor :is(button,input,select,textarea):focus-visible,.gift-admin-row:focus-visible{outline:3px solid #ae90eb;outline-offset:3px}
+@media(max-width:1100px){.gift-admin-layout{grid-template-columns:1fr}.gift-admin-library{position:static}.gift-admin-list{max-height:none;grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.gift-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.gift-admin-list{grid-template-columns:1fr}.gift-admin-fields{grid-template-columns:1fr}.gift-admin-fields .wide{grid-column:1}.gift-admin-editor>header,.gift-admin-editor footer{display:grid}.gift-admin-editor header button{justify-self:start}}
