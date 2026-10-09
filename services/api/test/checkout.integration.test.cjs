@@ -220,6 +220,29 @@ test("non-COD or unaccepted terms is rejected before committing customer details
   assert.equal(await count("orders"),0);
 });
 
+
+test("customer-reviewed total is protected when shipping changes before COD completion",async()=>{
+  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  const reviewed=await checkout.setCustomer(session.id,customer());
+  assert.equal(reviewed.total,78000);
+
+  // Rates can change while a buyer is reading the checkout review screen.
+  await pool.query("update shipping_rates set amount=450 where zone_id in (select id from shipping_zones where store_id=$1)",[fixture.storeId]);
+  await assert.rejects(
+    ()=>checkout.complete(session.id,"qa-quote-stale-123",{expectedTotal:reviewed.total}),
+    /final total has changed/i
+  );
+  assert.equal(await count("orders"),0);
+  assert.equal(await count("inventory_movements"),0);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
+
+  const refreshed=await checkout.setCustomer(session.id,customer());
+  assert.equal(refreshed.total,78450);
+  const completed=await checkout.complete(session.id,"qa-quote-fresh-456",{expectedTotal:refreshed.total});
+  assert.equal(completed.order.total,78450);
+  assert.equal(await count("orders"),1);
+});
+
 test("completion re-prices the latest variant price, not a stale client subtotal",async()=>{
   const session=await prepare();
   await pool.query("update product_variants set price=79000 where id=$1",[fixture.variantId]);
