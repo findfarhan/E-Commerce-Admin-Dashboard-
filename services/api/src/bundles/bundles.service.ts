@@ -141,6 +141,12 @@ export class BundlesService{
     for(const row of rows.rows){
       const current=await this.purchase(client,storeId,String(row.bundle_id),Number(row.quantity));
       if(JSON.stringify(current.snapshot)!==JSON.stringify(row.component_snapshot))throw new ConflictException("Bundle contents changed. Please restart checkout.");
+      // Immutable audit snapshots: do not fulfill against a different price or
+      // discount than the customer originally selected, even on a 100%-off set.
+      if(Math.round(current.grossAmount*100)!==Math.round(Number(row.gross_amount)*100)
+        ||Math.round(current.discountAmount*100)!==Math.round(Number(row.discount_amount)*100)){
+        throw new ConflictException("Bundle pricing changed. Please restart checkout.");
+      }
       discount=money(discount+current.discountAmount);
     }
     return {bundleCount:rows.rowCount,discount};
