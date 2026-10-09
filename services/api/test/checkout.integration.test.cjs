@@ -180,6 +180,15 @@ test("coupon and bundle discounts cannot be combined",async()=>{
   assert.equal(await count("orders"),0);
 });
 
+test("bundle COD completion requires an explicitly reviewed total",async()=>{
+  const {bundleId}=await seedBundle();
+  const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
+  await checkout.setCustomer(session.id,customer());
+  await assert.rejects(()=>checkout.complete(session.id,"qa-unreviewed-bundle-123"),/reviewed final total is required/i);
+  assert.equal(await count("orders"),0);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
+});
+
 test("changed component prices invalidate the customer's bundle checkout quote",async()=>{
   const {bundleId}=await seedBundle();
   const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
