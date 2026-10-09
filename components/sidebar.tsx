@@ -4,7 +4,7 @@ import {usePathname} from "next/navigation";
 
 const sections=[
   {label:"OVERVIEW",items:[["/","Command Center"],["/commerce","Commerce"]]},
-  {label:"SALES",items:[["/orders","Orders"],["/draft-orders","Draft Orders"],["/customers","Customers"],["/returns","Returns"]]},
+  {label:"SALES",items:[["/orders","Orders"],["/abandoned-checkouts","Abandoned Checkouts"],["/draft-orders","Draft Orders"],["/customers","Customers"],["/returns","Returns"]]},
   {label:"CATALOG",items:[["/products","Products"],["/bundles","Jewelry Bundles"],["/gift-packaging","Gift Packaging"],["/collections","Collections"],["/metafields","Metafields"],["/inventory","Inventory"]]},
   {label:"OPERATIONS",items:[["/shipping-tax","Shipping & Tax"],["/purchasing","Purchasing"],["/discounts","Discounts"],["/affiliates","Affiliates"],["/commissions","Custom Requests"]]},
   {label:"GROWTH",items:[["/audience","Audience"],["/inbox","Inbox"],["/automations","Automations"],["/analytics","Analytics"],["/channels","Channels"],["/storefront","Storefront"],["/seo","SEO / Discovery"]]},
