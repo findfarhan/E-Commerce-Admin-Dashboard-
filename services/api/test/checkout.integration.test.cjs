@@ -163,6 +163,27 @@ test("regular cart item plus bundles cannot over-consume the same variant stock"
   assert.equal(await count("inventory_movements"),0);
 });
 
+test("bundle tax saving is allocated only to taxable bundle components",async()=>{
+  const {bundleId}=await seedBundle();
+  await pool.query("update products set taxable=false where store_id=$1 and handle='qa-necklace'",[fixture.storeId]);
+  await pool.query("insert into tax_rules(store_id,name,country,rate,inclusive,active) values($1,'QA 10% Tax','Pakistan',0.10,false,true)",[fixture.storeId]);
+  // Two taxable rings: one standalone plus one inside the bundle.
+  // The non-taxable necklace must not shift bundle savings to the extra ring.
+  const session=await checkout.create({
+    items:[{variantId:fixture.variantId,quantity:1}],
+    bundles:[{bundleId,quantity:1}],
+  });
+  const quote=await checkout.setCustomer(session.id,customer());
+  assert.equal(Number(quote.subtotal),168000);
+  assert.equal(Number(quote.discount_amount),5000);
+  // Discount taxable share: 5000*(78000/90000)=4333.33.
+  // Tax base: 156000-4333.33 = 151666.67, 10% tax = 15166.67.
+  assert.equal(Number(quote.exclusive_tax_amount),15166.67);
+  assert.equal(Number(quote.total),178166.67);
+  const order=await checkout.complete(session.id,"qa-bundle-tax-123",{expectedTotal:quote.total});
+  assert.equal(order.order.total,178166.67);
+});
+
 test("archived or revised bundles are rejected at completion without creating orders",async()=>{
   const {bundleId}=await seedBundle();
   const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
