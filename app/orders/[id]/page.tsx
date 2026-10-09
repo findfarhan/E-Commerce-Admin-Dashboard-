@@ -55,6 +55,20 @@ export default async function OrderDetailPage({params}:{params:Promise<{id:strin
       </article>
     </section>
 
+    {(detail.bundles||[]).length>0&&<section className="panel" style={{marginBottom:20,padding:24}}>
+      <div className="panel-head"><div><span>BUNDLE ALLOCATIONS</span><h2>Sets in this order</h2></div></div>
+      <p style={{fontSize:13,opacity:.75,marginBottom:15}}>Order items above represent the individual physical variants. Bundle savings are accounted for at order level.</p>
+      <div className="activity-list">
+        {(detail.bundles||[]).map((bundle:any,index:number)=><div className="activity-item" key={index}>
+          <span>◇</span><div><b>{bundle.title_snapshot} × {bundle.quantity}</b>
+          <p>Regular {money(bundle.gross_amount)} · Bundle saving {money(bundle.discount_amount)}</p>
+          <small>Saved variant configuration is preserved for order auditing.</small></div>
+          <em>{money(Number(bundle.gross_amount)-Number(bundle.discount_amount))}</em>
+        </div>)}
+      </div>
+      <p style={{marginTop:15,fontSize:13}}><b>Total bundle discount:</b> {money(order.bundle_discount_amount)}</p>
+    </section>}
+
     <section className="dashboard-grid lower">
       <article className="panel">
         <div className="panel-head"><div><span>PAYMENT LEDGER</span><h2>Transactions</h2></div></div>
