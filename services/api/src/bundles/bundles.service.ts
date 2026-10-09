@@ -1,4 +1,4 @@
-import {BadRequestException,ConflictException,Injectable,NotFoundException} from "@nestjs/common";
+import {BadRequestException,ConflictException,Injectable,NotFoundException,ServiceUnavailableException} from "@nestjs/common";
 import {PoolClient} from "pg";
 import {DatabaseService} from "../database/database.service";
 import {ProductsService} from "../products/products.service";
@@ -12,6 +12,16 @@ const validUuid=(v:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-
 export class BundlesService{
   constructor(private readonly db:DatabaseService,private readonly products:ProductsService){}
 
+  async schemaReady(client?:PoolClient):Promise<boolean>{
+    const connection=client||this.db;
+    const r=await connection.query<{ready:boolean}>(
+      "select to_regclass('public.jewelry_bundles') is not null and to_regclass('public.checkout_bundle_allocations') is not null and to_regclass('public.order_bundle_allocations') is not null as ready"
+    );
+    return r.rows[0]?.ready===true;
+  }
+  private async requireSchema(client?:PoolClient){
+    if(!await this.schemaReady(client))throw new ServiceUnavailableException("Jewelry bundles are not activated until database migration 024 is installed");
+  }
   private async storeId(){
     const domain=process.env.STORE_DOMAIN||"jewelry-store-lime.vercel.app";
     const res=await this.db.query<{id:string}>("select id from stores where domain=$1 limit 1",[domain]);
@@ -36,6 +46,7 @@ export class BundlesService{
     return {title,handle,description,status,kind,value,components,starts,ends};
   }
   async variantChoices(){
+    await this.requireSchema();
     const storeId=await this.storeId();
     const result=await this.db.query<any>(
       "select v.id as variant_id,v.sku,v.title as variant_title,v.price,v.inventory,v.status as variant_status,p.id as product_id,p.title as product_title,p.handle,p.status as product_status,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as options from product_variants v join products p on p.id=v.product_id where p.store_id=$1 order by p.title,v.created_at limit 1200",
@@ -44,6 +55,7 @@ export class BundlesService{
     return {items:result.rows.map((x:any)=>({...x,price:Number(x.price),inventory:Number(x.inventory)}))};
   }
   async listAdmin(){
+    await this.requireSchema();
     const storeId=await this.storeId();
     const r=await this.db.query<any>("select * from jewelry_bundles where store_id=$1 order by updated_at desc limit 200",[storeId]);
     const items=[];
@@ -51,6 +63,7 @@ export class BundlesService{
     return {items};
   }
   async detailAdmin(id:string){
+    await this.requireSchema();
     const storeId=await this.storeId();
     const r=await this.db.query<BundleRow>("select * from jewelry_bundles where id=$1 and store_id=$2 limit 1",[id,storeId]);
     if(!r.rowCount)throw new NotFoundException("Bundle not found");
@@ -71,6 +84,7 @@ export class BundlesService{
       maxQuantity:eligible?Math.min(25,...components.map((c:any)=>Math.min(Math.floor(c.inventory/c.quantity),Math.floor(25/c.quantity)))):0,eligible};
   }
   async listPublic(){
+    if(!await this.schemaReady())return {items:[]};
     const storeId=await this.storeId();
     const r=await this.db.query<BundleRow>("select * from jewelry_bundles where store_id=$1 and status='active' and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) order by created_at desc limit 80",[storeId]);
     const catalog=await this.products.listStorefront();
@@ -87,6 +101,7 @@ export class BundlesService{
   async create(body:any){return this.save(null,body);}
   async update(id:string,body:any){return this.save(id,body);}
   private async save(id:string|null,body:any){
+    await this.requireSchema();
     const fields=this.validate(body);
     const storeId=await this.storeId();
     return this.db.transaction(async client=>{
@@ -113,6 +128,7 @@ export class BundlesService{
     });
   }
   async archive(id:string){
+    await this.requireSchema();
     const storeId=await this.storeId();
     return this.db.transaction(async client=>{
       const before=await client.query<any>("select * from jewelry_bundles where id=$1 and store_id=$2 for update",[id,storeId]);
@@ -141,6 +157,7 @@ export class BundlesService{
     return {title:bundle.rows[0].title,bundleId:id,quantity,components,grossAmount:money(gross*quantity),discountAmount:money(unitSaving*quantity),snapshot};
   }
   async checkoutDiscount(client:PoolClient,storeId:string,checkoutId:string){
+    if(!await this.schemaReady(client))return {bundleCount:0,discount:0,taxableDiscount:0};
     const rows=await client.query<any>("select * from checkout_bundle_allocations where checkout_id=$1 order by id",[checkoutId]);
     let discount=0,taxableDiscount=0;
     for(const row of rows.rows){
