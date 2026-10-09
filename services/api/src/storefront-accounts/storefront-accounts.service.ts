@@ -142,7 +142,7 @@ export class StorefrontAccountsService{
     return this.db.transaction(async client=>{
       await client.query("select id from storefront_accounts where id=$1 for update",[a.id]);
       const existing=await client.query<{id:string}>("select id from storefront_account_addresses where account_id=$1 order by created_at",[a.id]);
-      if(!id&&existing.rowCount>=10) throw new BadRequestException("Maximum 10 saved addresses");
+      if(!id&&(existing.rowCount||0)>=10) throw new BadRequestException("Maximum 10 saved addresses");
       if(id&&!existing.rows.some(row=>row.id===id)) throw new NotFoundException("Address not found");
       const isDefault=Boolean(body?.isDefault)||(!id&&existing.rowCount===0);
       if(isDefault) await client.query("update storefront_account_addresses set is_default=false where account_id=$1",[a.id]);
