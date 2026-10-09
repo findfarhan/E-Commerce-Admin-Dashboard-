@@ -164,6 +164,28 @@ test("unchecking consent immediately suppresses recovery without another quote",
  assert.equal(latest.next_send_at,null);
 });
 
+test("only the most recently consented checkout stays eligible per email",async()=>{
+ const first=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(first.id,customer({recoveryOptIn:true}));
+ const second=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(second.id,customer({recoveryOptIn:true}));
+ const a=await one("select status from checkout_recoveries where checkout_id=$1",[first.id]);
+ const b=await one("select status from checkout_recoveries where checkout_id=$1",[second.id]);
+ assert.equal(a.status,"suppressed");
+ assert.equal(b.status,"pending");
+});
+
+test("recovery consent expires safely after seven days and cannot be redeemed",async()=>{
+ const original=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(original.id,customer({recoveryOptIn:true}));
+ await pool.query("update checkout_recoveries set consent_at=now()-interval '8 days' where checkout_id=$1",[original.id]);
+ await recovery.expireRecoveryConsent();
+ assert.equal((await one("select status from checkout_recoveries where checkout_id=$1",[original.id])).status,"expired");
+ const digest=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET)
+   .update("recover\n"+original.id+"\nqa-regression@example.invalid").digest("hex");
+ await assert.rejects(()=>recovery.redeem(original.id,digest),/no longer recoverable/i);
+});
+
 test("no recovery provider means no queued or sent emails",async()=>{
  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
  await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
