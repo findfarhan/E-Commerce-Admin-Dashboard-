@@ -27,7 +27,7 @@ create table if not exists checkout_recoveries(
  email_snapshot text not null,
  consent_at timestamptz not null,
  consent_version text not null default 'v1',
- status text not null default 'pending' check(status in ('pending','recovered','suppressed')),
+ status text not null default 'pending' check(status in ('pending','recovered','suppressed','expired')),
  next_send_at timestamptz,
  send_step smallint not null default 0 check(send_step between 0 and 3),
  last_sent_at timestamptz,
