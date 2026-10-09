@@ -55,7 +55,7 @@ export class GiftPackagingService{
   const position=Number(body?.position||0);
   const taxable=body?.taxable===true;
   if(title.length<2||title.length>130||! /^[A-Z0-9][A-Z0-9_-]{1,79}$/.test(sku)||description.length>1200)throw new BadRequestException("Valid packaging title, SKU and description are required");
-  if(!Number.isFinite(price)||price<0||price>100000||!Number.isInteger(Math.round(price*100))||!Number.isInteger(inventory)||inventory<0||inventory>1000000||!Number.isInteger(weight)||weight<0||weight>25000||!Number.isInteger(position)||position<0||position>10000)throw new BadRequestException("Invalid packaging price, stock, weight or position");
+  if(!Number.isFinite(price)||price<0||price>100000||Math.abs(price*100-Math.round(price*100))>0.000001||!Number.isInteger(inventory)||inventory<0||inventory>1000000||!Number.isInteger(weight)||weight<0||weight>25000||!Number.isInteger(position)||position<0||position>10000)throw new BadRequestException("Invalid packaging price, stock, weight or position");
   if(!["draft","active","archived"].includes(status))throw new BadRequestException("Invalid packaging status");
   if(imageUrl&&(!imageUrl.startsWith("https://")||imageUrl.length>1000))throw new BadRequestException("Packaging image must use a secure HTTPS URL");
   return {title,sku,description,imageUrl,status,price:amount(price),inventory,weight,taxable,position};
