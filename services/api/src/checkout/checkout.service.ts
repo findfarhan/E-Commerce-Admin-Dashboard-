@@ -3,6 +3,7 @@ import {DatabaseService} from "../database/database.service";
 import {CollectionsService} from "../collections/collections.service";
 import {BundlesService} from "../bundles/bundles.service";
 import {GiftPackagingService} from "../gift-packaging/gift-packaging.service";
+const validAnonymousId=(v:unknown)=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 
 type RequestedLine={slug?:string;variantId?:string;quantity?:number};
 
@@ -98,6 +99,11 @@ export class CheckoutService{
         await client.query("insert into checkout_lines(checkout_id,product_id,variant_id,sku_snapshot,title_snapshot,selected_options,quantity,unit_price,line_total) values($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)",[checkout.rows[0].id,line.product_id,line.variant_id,line.sku,line.title,JSON.stringify(line.selected_options||{}),line.quantity,line.unitPrice,line.lineTotal]);
       }
 
+      const analyticsSessionId=body?.analyticsConsent===true&&validAnonymousId(body?.analyticsSessionId)?body.analyticsSessionId:null;
+      if(analyticsSessionId){
+        const supported=await client.query<{supported:boolean}>("select to_regclass('public.analytics_events') is not null as supported");
+        if(supported.rows[0]?.supported)await client.query("update checkout_sessions set analytics_session_id=$1 where id=$2",[analyticsSessionId,checkout.rows[0].id]);
+      }
       for(const bundle of bundleAllocations){
         await client.query("insert into checkout_bundle_allocations(checkout_id,bundle_id,quantity,title_snapshot,component_snapshot,gross_amount,discount_amount) values($1,$2,$3,$4,$5::jsonb,$6,$7)",[checkout.rows[0].id,bundle.bundleId,bundle.quantity,bundle.title,JSON.stringify(bundle.snapshot),bundle.grossAmount,bundle.discountAmount]);
       }
@@ -272,6 +278,14 @@ export class CheckoutService{
     );
 
     if(!result.rowCount) throw new NotFoundException("Open checkout not found");
+    const recoverySchema=await client.query<{ready:boolean}>("select to_regclass('public.checkout_recoveries') is not null as ready");
+    if(recoverySchema.rows[0]?.ready){
+      if(body?.recoveryOptIn===true){
+        await client.query("insert into checkout_recoveries(store_id,checkout_id,email_snapshot,consent_at,consent_version,next_send_at) values($1,$2,$3,now(),'v1',now()+interval '1 hour') on conflict(checkout_id) do update set email_snapshot=excluded.email_snapshot,consent_at=excluded.consent_at,consent_version=excluded.consent_version,status='pending',send_step=0,next_send_at=excluded.next_send_at,updated_at=now() where checkout_recoveries.send_step=0",[store.id,id,email]);
+      }else{
+        await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1 and store_id=$2 and status='pending'",[id,store.id]);
+      }
+    }
     return {...result.rows[0],subtotal:Number(result.rows[0].subtotal),discount_amount:Number(result.rows[0].discount_amount||0),gift_packaging_price:packagingPrice,shipping_amount:Number(result.rows[0].shipping_amount||0),tax_amount:Number(result.rows[0].tax_amount||0),inclusive_tax_amount:Number(result.rows[0].inclusive_tax_amount||0),exclusive_tax_amount:Number(result.rows[0].exclusive_tax_amount||0),total:Number(result.rows[0].total||0)};
     });
   }
@@ -478,6 +492,13 @@ export class CheckoutService{
       await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[store.id,"New order "+orderNumber,"New storefront order for "+order.currency+" "+Number(order.total).toLocaleString(),order.id]);
       await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','order_confirmation',$2,$3,$4::jsonb,'queued')",[store.id,email,"Order "+orderNumber+" confirmation",JSON.stringify({orderId:order.id,orderNumber,total:Number(order.total),currency:order.currency,name:checkout.customer_name})]);
       await client.query("update checkout_sessions set status='completed',subtotal=$1,completed_order_id=$2,updated_at=now() where id=$3",[subtotal,order.id,id]);
+      const recoverySchema=await client.query<{ready:boolean}>("select to_regclass('public.checkout_recoveries') is not null as ready");
+      if(recoverySchema.rows[0]?.ready){
+        await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1 and status='pending'",[id]);
+        if(checkout.recovered_from_checkout_id){
+          await client.query("update checkout_recoveries set status='recovered',recovered_order_id=$1,recovered_checkout_id=$2,next_send_at=null,updated_at=now() where checkout_id=$3 and status='pending'",[order.id,id,checkout.recovered_from_checkout_id]);
+        }
+      }
 
       return {ok:true,idempotent:false,order:{id:order.id,orderNumber:order.order_number,status:order.status,paymentStatus:order.payment_status,fulfillmentStatus:order.fulfillment_status,total:Number(order.total),currency:order.currency}};
     });
