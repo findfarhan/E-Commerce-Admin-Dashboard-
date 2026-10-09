@@ -10,6 +10,11 @@ export class PublicRateLimitGuard implements CanActivate{
   private calls=0;
 
   private maxForRoute(route:string){
+    if(route.includes("account/login")) return 8;
+    if(route.includes("account/register")) return 5;
+    if(route.includes("account/claim-order")) return 12;
+    if(route.includes("account/reviews")) return 30;
+    if(route.includes("account")) return 40;
     if(route.includes("order-lookup")) return 12;
     if(route.includes("commissions")) return 8;
     if(route.includes("newsletter")) return 10;
