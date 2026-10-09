@@ -1,6 +1,7 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException,UnauthorizedException} from "@nestjs/common";
 import {createHash,randomBytes} from "node:crypto";
 import {DatabaseService} from "../database/database.service";
+import type {PoolClient} from "pg";
 import {StorefrontAccountsService} from "../storefront-accounts/storefront-accounts.service";
 
 const clean=(value:any,max=240)=>String(value??"").trim().slice(0,max);
@@ -195,7 +196,7 @@ export class AffiliatesService{
     if(!r.rowCount)throw new NotFoundException("Affiliate not found");
     return {ok:true,...r.rows[0]};
   }
-  private async payableCheck(client:any,id:string,storeId:string){
+  private async payableCheck(client:PoolClient,id:string,storeId:string){
     const r=await client.query<any>(
       "select c.*,o.status order_status,o.payment_status,o.fulfillment_status,o.fulfilled_at,o.created_at order_created_at,a.status affiliate_status,a.payout_method,a.payout_recipient,a.payout_destination,s.hold_days from affiliate_commissions c join orders o on o.id=c.order_id join affiliates a on a.id=c.affiliate_id left join affiliate_program_settings s on s.store_id=c.store_id where c.id=$1 and c.store_id=$2 for update of c",[id,storeId]);
     if(!r.rowCount)throw new NotFoundException("Commission not found");
