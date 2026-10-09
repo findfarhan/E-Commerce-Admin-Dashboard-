@@ -114,9 +114,14 @@ export class BundlesService{
   }
   async archive(id:string){
     const storeId=await this.storeId();
-    const r=await this.db.query("update jewelry_bundles set status='archived',updated_at=now() where id=$1 and store_id=$2 returning id",[id,storeId]);
-    if(!r.rowCount)throw new NotFoundException("Bundle not found");
-    return {ok:true};
+    return this.db.transaction(async client=>{
+      const before=await client.query<any>("select * from jewelry_bundles where id=$1 and store_id=$2 for update",[id,storeId]);
+      if(!before.rowCount)throw new NotFoundException("Bundle not found");
+      if(before.rows[0].status==="archived")return {ok:true,idempotent:true};
+      const result=await client.query<any>("update jewelry_bundles set status='archived',updated_at=now() where id=$1 and store_id=$2 returning *",[id,storeId]);
+      await client.query("insert into audit_log(store_id,actor,action,resource_type,resource_id,before_state,after_state) values($1,'admin','bundle.archived','bundle',$2,$3::jsonb,$4::jsonb)",[storeId,id,JSON.stringify(before.rows[0]),JSON.stringify(result.rows[0])]);
+      return {ok:true};
+    });
   }
 
   /** Server pricing: a bundle always expands to real inventory-bearing variant lines. */
