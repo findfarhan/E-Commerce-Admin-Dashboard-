@@ -167,7 +167,7 @@ test("recovery token creates fresh priced checkout and attributes only a confirm
  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
  await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
  await pool.query("update checkout_sessions set status='expired',expires_at=now()-interval '1 day' where id=$1",[session.id]);
- const token=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("recover\\n"+session.id+"\\nqa-regression@example.invalid").digest("hex");
+ const token=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("recover\n"+session.id+"\nqa-regression@example.invalid").digest("hex");
  const {checkoutId}=await recovery.redeem(session.id,token);
  assert.notEqual(checkoutId,session.id);
  const second=await recovery.redeem(session.id,token);
@@ -186,12 +186,12 @@ test("recovery token creates fresh priced checkout and attributes only a confirm
 test("unsubscribe suppresses all pending reminders and blocks linked recovery",async()=>{
  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
  await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
- const token=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("unsubscribe\\n"+session.id+"\\nqa-regression@example.invalid").digest("hex");
+ const token=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("unsubscribe\n"+session.id+"\nqa-regression@example.invalid").digest("hex");
  await recovery.unsubscribe(session.id,token);
  const row=await one("select status from checkout_recoveries where checkout_id=$1",[session.id]);
  assert.equal(row.status,"suppressed");
  assert.equal((await one("select count(*)::int n from checkout_recovery_optouts")).n,1);
- const redeem=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("recover\\n"+session.id+"\\nqa-regression@example.invalid").digest("hex");
+ const redeem=createHmac("sha256",process.env.RECOVERY_SIGNING_SECRET).update("recover\n"+session.id+"\nqa-regression@example.invalid").digest("hex");
  await assert.rejects(()=>recovery.redeem(session.id,redeem),/no longer recoverable/);
 });
 
