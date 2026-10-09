@@ -290,6 +290,18 @@ export class CheckoutService{
     });
   }
 
+  /** One-way, immediate consent withdrawal. A public checkout ID never allows opt-in. */
+  async withdrawRecoveryConsent(id:string){
+    const store=await this.store();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
+      throw new BadRequestException("Invalid checkout ID");
+    const ready=await this.db.query<{ready:boolean}>("select to_regclass('public.checkout_recoveries') is not null as ready");
+    if(ready.rows[0]?.ready){
+      await this.db.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1 and store_id=$2 and status='pending'",[id,store.id]);
+    }
+    return {ok:true};
+  }
+
   async complete(id:string,idempotencyKey?:string,body?:{expectedTotal?:number}){
     if(!idempotencyKey||idempotencyKey.length<8) throw new BadRequestException("Idempotency-Key header is required");
     const store=await this.store();
