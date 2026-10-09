@@ -1,6 +1,7 @@
 "use client";
-import {useActionState,useMemo,useState} from "react";
-import {saveBundleAction,type BundleActionState} from "@/app/bundles/actions";
+import {useActionState,useEffect,useMemo,useState} from "react";
+import {useRouter} from "next/navigation";
+import {saveBundleAction,archiveBundleAction,type BundleActionState} from "@/app/bundles/actions";
 
 type Variant={
  variant_id:string;sku:string;price:number;inventory:number;
@@ -26,6 +27,8 @@ export function BundleEditor({bundles,variants}:{bundles:Bundle[];variants:Varia
   const [query,setQuery]=useState("");
   const [picked,setPicked]=useState("");
   const [formResult,save,pending]=useActionState(saveBundleAction,actionState);
+  const router=useRouter();
+  useEffect(()=>{if(formResult.ok)router.refresh();},[formResult,router]);
   const byId=useMemo(()=>new Map(variants.map(v=>[v.variant_id,v])),[variants]);
   const visible=useMemo(()=>variants.filter(v=>v.variant_status==="active"&&v.product_status==="active"&&
     (v.product_title+" "+v.sku+" "+optionText(v)).toLowerCase().includes(query.toLowerCase())).slice(0,50),[variants,query]);
@@ -44,6 +47,7 @@ export function BundleEditor({bundles,variants}:{bundles:Bundle[];variants:Varia
     const v=byId.get(c.variantId);return v&&v.inventory>=c.quantity&&v.variant_status==="active"&&v.product_status==="active";
   });
   const percent=gross>0?Math.round(saving/gross*100):0;
+  const pricingValid=Number.isFinite(selected.discountValue)&&selected.discountValue>=0&&(selected.discountKind!=="fixed"||selected.discountValue<=gross);
   return <div className="bundle-admin-layout">
     <aside className="panel bundle-admin-list">
       <div className="panel-head"><div><span>CURATED SETS</span><h2>Bundle library</h2></div><button type="button" className="secondary-button" onClick={()=>setSelected(empty())}>+ New</button></div>
@@ -63,7 +67,7 @@ export function BundleEditor({bundles,variants}:{bundles:Bundle[];variants:Varia
       <input type="hidden" name="components" value={JSON.stringify(selected.components)}/>
       <header className="bundle-editor-heading">
         <div><span>{selected.id?"EDIT EXISTING SET":"NEW BUNDLE"}</span><h2>{selected.title||"Build a jewelry set"}</h2><p>Mix individual product variants. Customers see an exact list of pieces, transparent savings and verified availability.</p></div>
-        <button disabled={pending||!ready||!selected.title||!selected.handle} className="primary-button" type="submit">{pending?"Saving…":selected.id?"Save changes":"Create bundle"}</button>
+        <button disabled={pending||!ready||!pricingValid||!selected.title||!selected.handle} className="primary-button" type="submit">{pending?"Saving…":selected.id?"Save changes":"Create bundle"}</button>
       </header>
 
       {formResult.message&&<p key={formResult.message} role={formResult.ok?"status":"alert"} className={"bundle-notice "+(formResult.ok?"success":"error")}>{formResult.message}</p>}
@@ -105,6 +109,7 @@ export function BundleEditor({bundles,variants}:{bundles:Bundle[];variants:Varia
           <label><span>Saving type</span><select name="discountKind" value={selected.discountKind} onChange={e=>update({discountKind:e.target.value as "fixed"|"percentage"})}><option value="percentage">Percent off set</option><option value="fixed">Fixed amount off set</option></select></label>
           <label><span>{selected.discountKind==="percentage"?"Discount (%)":"Discount (PKR)"}</span><input name="discountValue" type="number" required min={0} max={selected.discountKind==="percentage"?100:999999} step="0.01" value={selected.discountValue} onChange={e=>update({discountValue:Number(e.target.value)||0})}/></label>
         </div>
+        {!pricingValid&&<p className="bundle-validation" role="alert">Fixed bundle saving cannot be greater than the price of its component pieces.</p>}
         <div className="bundle-price-preview">
           <div><span>Separate items</span><strong>{money(gross)}</strong></div>
           <div><span>Bundle saving ({percent}%)</span><strong>− {money(saving)}</strong></div>
@@ -112,7 +117,14 @@ export function BundleEditor({bundles,variants}:{bundles:Bundle[];variants:Varia
           <p>Estimate from current admin catalog. Server validates actual prices and stock again before order creation.</p>
         </div>
       </section>
-      <footer className="bundle-editor-footer"><span>Inventory is deducted per original SKU, not from an imaginary bundle stock counter.</span><button type="submit" className="primary-button" disabled={pending||!ready||!selected.handle||!selected.title}>{pending?"Saving…":"Save bundle"}</button></footer>
+      <footer className="bundle-editor-footer"><span>Inventory is deducted per original SKU, not from an imaginary bundle stock counter.</span>
+        <div className="bundle-footer-actions">
+          {selected.id&&<button type="submit" formAction={archiveBundleAction} formNoValidate className="secondary-button"
+            onClick={e=>{if(!window.confirm("Archive this jewelry set? Existing checkout links will no longer be valid."))e.preventDefault();}}
+            disabled={pending}>Archive set</button>}
+          <button type="submit" className="primary-button" disabled={pending||!ready||!pricingValid||!selected.handle||!selected.title}>{pending?"Saving…":"Save bundle"}</button>
+        </div>
+      </footer>
     </form>
   </div>;
 }
