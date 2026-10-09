@@ -255,9 +255,10 @@ export class CheckoutService{
     const isGift=Boolean(body?.isGift);
     const giftMessage=isGift?String(body?.giftMessage||"").trim().slice(0,500):null;
 
+    const bundlesInstalled=await this.bundles.schemaReady(client);
     const result=await client.query<any>(
-      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,terms_accepted_at=now(),discount_code=$11,discount_amount=$12,tax_amount=$13,inclusive_tax_amount=$14,exclusive_tax_amount=$15,total=$16,bundle_discount_amount=$19,updated_at=now() where id=$17 and store_id=$18 and status='open' and expires_at>now() returning id,status,currency,subtotal,discount_code,discount_amount,bundle_discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,terms_accepted_at,expires_at",
-      [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,discountRow?.code||null,discountAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,id,store.id,bundleQuote.discount]
+      "update checkout_sessions set customer_email=$1,customer_name=$2,customer_phone=$3,shipping_address=$4::jsonb,billing_address=$5::jsonb,shipping_method=$6,shipping_amount=$7,payment_method=$8,is_gift=$9,gift_message=$10,terms_accepted_at=now(),discount_code=$11,discount_amount=$12,tax_amount=$13,inclusive_tax_amount=$14,exclusive_tax_amount=$15,total=$16"+(bundlesInstalled?",bundle_discount_amount=$19":"")+",updated_at=now() where id=$17 and store_id=$18 and status='open' and expires_at>now() returning id,status,currency,subtotal,discount_code,discount_amount"+(bundlesInstalled?",bundle_discount_amount":"")+",shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,customer_email,customer_name,customer_phone,shipping_address,billing_address,shipping_method,payment_method,is_gift,gift_message,terms_accepted_at,expires_at",
+      [email,name,phone,JSON.stringify(shipping),JSON.stringify(billing),shippingMethod,shippingAmount,paymentMethod,isGift,giftMessage,discountRow?.code||null,discountAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,id,store.id,...(bundlesInstalled?[bundleQuote.discount]:[])]
     );
 
     if(!result.rowCount) throw new NotFoundException("Open checkout not found");
@@ -401,7 +402,8 @@ export class CheckoutService{
         }
       }
 
-      await client.query("update checkout_sessions set subtotal=$1,discount_amount=$2,shipping_amount=$3,tax_amount=$4,inclusive_tax_amount=$5,exclusive_tax_amount=$6,total=$7,shipping_method=$8,bundle_discount_amount=$10,updated_at=now() where id=$9",[subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,finalShippingMethod,id,bundleQuote.discount]);
+      const bundlesInstalled=await this.bundles.schemaReady(client);
+      await client.query("update checkout_sessions set subtotal=$1,discount_amount=$2,shipping_amount=$3,tax_amount=$4,inclusive_tax_amount=$5,exclusive_tax_amount=$6,total=$7,shipping_method=$8"+(bundlesInstalled?",bundle_discount_amount=$10":"")+",updated_at=now() where id=$9",[subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,finalShippingMethod,id,...(bundlesInstalled?[bundleQuote.discount]:[])]);
 
       const email=String(checkout.customer_email).toLowerCase();
       const customerResult=await client.query<any>(
@@ -413,8 +415,8 @@ export class CheckoutService{
       const numberResult=await client.query<{value:string}>("select 'JS-'||lpad(nextval('jewelry_order_number_seq')::text,6,'0') as value");
       const orderNumber=numberResult.rows[0].value;
       const orderResult=await client.query<any>(
-        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code,fulfillment_location_id,bundle_discount_amount) values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19,$20,$21) returning *",
-        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),finalShippingMethod,Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId,bundleQuote.discount]
+        "insert into orders(store_id,customer_id,order_number,status,payment_status,currency,subtotal,discount_amount,shipping_amount,tax_amount,inclusive_tax_amount,exclusive_tax_amount,total,source_channel,external_id,shipping_address,billing_address,shipping_method,payment_method,fulfillment_status,is_gift,gift_message,terms_accepted_at,discount_code,fulfillment_location_id"+(bundlesInstalled?",bundle_discount_amount":"")+") values($1,$2,$3,'confirmed','pending',$4,$5,$6,$7,$8,$9,$10,$11,'online_store',$12,$13::jsonb,$14::jsonb,$15,'cod','unfulfilled',$16,$17,$18,$19,$20"+(bundlesInstalled?",$21":"")+") returning *",
+        [store.id,customer.id,orderNumber,checkout.currency||store.currency||"PKR",subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,"checkout:"+id+":"+idempotencyKey,JSON.stringify(checkout.shipping_address||{}),JSON.stringify(checkout.billing_address||checkout.shipping_address||{}),finalShippingMethod,Boolean(checkout.is_gift),checkout.gift_message||null,checkout.terms_accepted_at,checkout.discount_code||null,fulfillmentLocationId,...(bundlesInstalled?[bundleQuote.discount]:[])]
       );
       const order=orderResult.rows[0];
 
@@ -430,7 +432,7 @@ export class CheckoutService{
         }
       }
 
-      await client.query("insert into order_bundle_allocations(order_id,bundle_id,title_snapshot,component_snapshot,quantity,gross_amount,discount_amount) select $1,bundle_id,title_snapshot,component_snapshot,quantity,gross_amount,discount_amount from checkout_bundle_allocations where checkout_id=$2",[order.id,id]);
+      if(bundlesInstalled)await client.query("insert into order_bundle_allocations(order_id,bundle_id,title_snapshot,component_snapshot,quantity,gross_amount,discount_amount) select $1,bundle_id,title_snapshot,component_snapshot,quantity,gross_amount,discount_amount from checkout_bundle_allocations where checkout_id=$2",[order.id,id]);
 
       if(discountRow){
         await client.query("update discount_codes set usage_count=usage_count+1 where id=$1",[discountRow.id]);
