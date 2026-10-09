@@ -124,11 +124,11 @@ export class BundlesService{
     if(!validUuid(id)||!Number.isInteger(quantity)||quantity<1||quantity>25)throw new BadRequestException("Invalid bundle quantity");
     const bundle=await client.query<BundleRow>("select * from jewelry_bundles where id=$1 and store_id=$2 and status='active' and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) for share",[id,storeId]);
     if(!bundle.rowCount)throw new ConflictException("Bundle is unavailable");
-    const detail=await client.query<any>("select bc.variant_id,bc.quantity,v.sku,v.price,v.inventory,v.status,v.product_id,p.title,p.handle,p.status as product_status,p.published_at,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options from jewelry_bundle_components bc join product_variants v on v.id=bc.variant_id join products p on p.id=v.product_id where bc.bundle_id=$1 order by bc.position,bc.id",[id]);
+    const detail=await client.query<any>("select bc.variant_id,bc.quantity,v.sku,v.price,v.inventory,v.status,v.product_id,p.title,p.handle,p.store_id as product_store_id,p.status as product_status,p.published_at,coalesce((select jsonb_object_agg(o.name,ov.value) from variant_option_values vv join product_option_values ov on ov.id=vv.option_value_id join product_options o on o.id=ov.option_id where vv.variant_id=v.id),'{}'::jsonb) as selected_options from jewelry_bundle_components bc join product_variants v on v.id=bc.variant_id join products p on p.id=v.product_id where bc.bundle_id=$1 order by bc.position,bc.id",[id]);
     if(detail.rowCount<2)throw new ConflictException("Bundle is incomplete");
     const components=detail.rows.map((v:any)=>({...v,quantity:Number(v.quantity)}));
     for(const c of components){
-      if(c.status!=="active"||c.product_status!=="active"||(c.published_at&&new Date(c.published_at).getTime()>Date.now())||Number(c.inventory)<c.quantity*quantity)throw new ConflictException("A bundle component is unavailable or out of stock");
+      if(c.product_store_id!==storeId||c.status!=="active"||c.product_status!=="active"||(c.published_at&&new Date(c.published_at).getTime()>Date.now())||Number(c.inventory)<c.quantity*quantity)throw new ConflictException("A bundle component is unavailable or out of stock");
     }
     const gross=money(components.reduce((sum:number,c:any)=>sum+Number(c.price)*c.quantity,0));
     const unitSaving=money(Math.min(gross,bundle.rows[0].discount_kind==="percentage"?gross*Number(bundle.rows[0].discount_value)/100:Number(bundle.rows[0].discount_value)));
