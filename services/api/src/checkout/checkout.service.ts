@@ -391,8 +391,11 @@ export class CheckoutService{
         "join affiliate_program_settings cfg on cfg.store_id=attr.store_id "+
         "join storefront_accounts account on account.id=a.account_id "+
         "where attr.checkout_id=$3 and attr.store_id=$1 and a.store_id=$1 and a.status='approved' and cfg.enabled=true "+
-        "and lower(account.email)<>lower($6) on conflict(order_id) do nothing",
-        [store.id,order.id,id,affiliateBasis,order.currency,email]
+        "and lower(account.email)<>lower($6) "+
+        "and (account.phone is null or length(regexp_replace(account.phone,'[^0-9]','','g'))<10 "+
+        "or right(regexp_replace(account.phone,'[^0-9]','','g'),10)<>right(regexp_replace($7::text,'[^0-9]','','g'),10)) "+
+        "on conflict(order_id) do nothing",
+        [store.id,order.id,id,affiliateBasis,order.currency,email,checkout.customer_phone]
       );
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift),discountCode:checkout.discount_code||null})]);
       await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[store.id,"New order "+orderNumber,"New storefront order for "+order.currency+" "+Number(order.total).toLocaleString(),order.id]);
