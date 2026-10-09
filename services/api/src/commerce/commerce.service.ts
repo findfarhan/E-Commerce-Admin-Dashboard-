@@ -285,6 +285,11 @@ export class CommerceService{
     return this.db.transaction(async c=>{
       const orderR=await c.query<any>("select * from orders where id=$1 and store_id=$2 for update",[id,store.id]);if(!orderR.rowCount)throw new NotFoundException("Order not found");const order=orderR.rows[0];
       if(order.status==="canceled")throw new ConflictException("Canceled orders cannot be edited");
+      // A bundle discount is an audited composition of specific purchased SKUs.
+      // Generic line/discount edits must not invalidate that permanent audit trail.
+      const bundleAllocation=await c.query("select 1 from order_bundle_allocations where order_id=$1 limit 1",[id]);
+      if(bundleAllocation.rowCount&&(items||body?.discountAmount!==undefined||body?.taxAmount!==undefined||body?.inclusiveTaxAmount!==undefined||body?.exclusiveTaxAmount!==undefined))
+        throw new ConflictException("Bundle-backed order pricing is locked. Use the cancellation or return workflow instead.");
       if(["fulfilled","returned"].includes(order.fulfillment_status))throw new ConflictException("Fulfilled or returned orders must use the return/exchange workflow");
       let fulfillmentLocationId=order.fulfillment_location_id||null;
       if(!fulfillmentLocationId){
