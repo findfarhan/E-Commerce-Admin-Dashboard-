@@ -10,7 +10,7 @@
 - Existing checkout expires as before after two hours. Recovery links are valid for up to seven days from consent, and mint a **new server-priced checkout** from the original underlying variants/bundle selections. Expired price, shipping, stock and discount are not reused. Customer must re-enter/confirm delivery details.
 - Recovery credit occurs **only when the newly recovered checkout results in a confirmed COD order**. Opening an email does not count as a recovered sale.
 - Unsubscribe link uses a distinct HMAC-purpose signature and suppresses all pending reminders for that email/store. Email security scanners do not redeem or opt out on GET; the buyer must explicitly click a button.
-- A 15-minute scheduler processes due attempts at 1, 24, and 72 hours after opt-in. It checks checkout state, email and opt-outs before sending, uses database unique(checkout_id,step), claims via SKIP LOCKED and sends using Resend native HTTP API with a provider idempotency key. Provider failure stops further automated attempts for operator review rather than risking duplicate sends.
+- A 15-minute scheduler processes due attempts at 1, 24, and 72 hours after opt-in. It checks checkout state, email and opt-outs before sending, uses database unique(checkout_id,step), claims via SKIP LOCKED and sends using Resend native HTTP API with a provider idempotency key. Provider failure stops further automated attempts for operator review rather than risking duplicate sends. Multiple checkouts for one email are deduplicated; reminders are capped at three per email per rolling week. An hourly cleanup expires consented recovery links after seven days.
 - **Safe default:** email dispatch is disabled unless `RECOVERY_EMAIL_ENABLED=true` **and** `RESEND_API_KEY`, verified `RECOVERY_FROM_EMAIL`, and `RECOVERY_SIGNING_SECRET` (at least 32 characters) are configured. No existing email provider is presumed or changed.
 
 ## Database migration 026
@@ -28,6 +28,7 @@
 - New `/abandoned-checkouts`: opted-in pending/recovered/suppressed counts; 30-day confirmed COD order value; consented email list; attempt statuses; operational email-disabled indication.
 - Existing `/analytics`: anonymized opt-in browsing funnel shown explicitly apart from operational checkout starts/completions, expired checkout value, product views/adds, acquisition channel, and 30-day conversion.
 - Recovery links/tokens are not sent to or rendered in the admin interface.
+- Anonymous analytics events are automatically discarded after 90 days (while aggregated operational checkout records remain intact).
 - Authorization: CRM permission for recovery and Analytics permission for conversion; staff session required.
 
 ## Testing and release gates
@@ -55,6 +56,7 @@ Browser tests require Playwright and `E2E_BASE_URL=http://localhost:3000`; optio
 3. Configure `RESEND_API_KEY`, check sending rate limits and unsubscribe link URLs.
 4. Ensure `RECOVERY_STOREFRONT_URL` points to the actually LIVE updated storefront with `/recover` and `/recovery-unsubscribe` (no premature sends).
 5. After production 026 migration, backend+frontend successful deployments, and disposable QA, set `RECOVERY_EMAIL_ENABLED=true`.
+5a. On Render free/sleeping services the in-process 15-minute timer only runs while the service is awake. For reliable delivery connect an external scheduler to `POST /v1/internal/recovery/tick` with the `X-Recovery-Cron-Secret` header and a **32+ character** `RECOVERY_CRON_SECRET` configured in the API environment. Keep the endpoint secret private; never publish it or commit it to GitHub.
 6. Review regional messaging/consent requirements and sending-domain setup. This recovery list is **not** the general newsletter list.
 
 No AI/model or paid email provider is required for local algorithmic ranking; actual automated external email delivery requires a connected/configured sender.
