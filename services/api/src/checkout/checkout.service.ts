@@ -222,7 +222,9 @@ export class CheckoutService{
 
     const taxable=await client.query<any>("select coalesce(sum(cl.line_total),0) amount from checkout_lines cl join products p on p.id=cl.product_id where cl.checkout_id=$1 and p.taxable=true",[id]);
     const taxableSubtotal=Number(taxable.rows[0]?.amount||0);
-    const taxableDiscount=subtotal>0?discountAmount*(taxableSubtotal/subtotal):0;
+    const taxableDiscount=bundleQuote.bundleCount
+      ?bundleQuote.taxableDiscount
+      :(subtotal>0?discountAmount*(taxableSubtotal/subtotal):0);
     let taxableBase=Math.max(0,taxableSubtotal-taxableDiscount);
     const taxRules=await client.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,shipping.country,shipping.region]);
     let taxAmount=0;
@@ -366,7 +368,9 @@ export class CheckoutService{
       }
 
       const taxableSubtotal=locked.filter((x:any)=>x.variant.taxable!==false).reduce((sum:number,x:any)=>sum+Number(x.lineTotal),0);
-      const taxableDiscount=subtotal>0?discountAmount*(taxableSubtotal/subtotal):0;
+      const taxableDiscount=bundleQuote.bundleCount
+      ?bundleQuote.taxableDiscount
+      :(subtotal>0?discountAmount*(taxableSubtotal/subtotal):0);
       const taxableBase=Math.max(0,taxableSubtotal-taxableDiscount);
       const taxRules=await client.query<any>("select * from tax_rules where store_id=$1 and active=true and (country is null or country='' or country=$2) and (region is null or region='' or region=$3) order by priority,created_at",[store.id,String(shippingAddress.country||"Pakistan"),String(shippingAddress.region||"")]);
       let inclusiveTaxAmount=0,exclusiveTaxAmount=0;
