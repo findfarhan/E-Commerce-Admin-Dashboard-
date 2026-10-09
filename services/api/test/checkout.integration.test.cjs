@@ -155,6 +155,15 @@ test("explicit opted-in recovery is suppressed after shopper opts out on quote u
  assert.equal((await one("select status from checkout_recoveries where checkout_id=$1",[session.id])).status,"suppressed");
 });
 
+test("unchecking consent immediately suppresses recovery without another quote",async()=>{
+ const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+ await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
+ await checkout.withdrawRecoveryConsent(session.id);
+ const latest=await one("select status,next_send_at from checkout_recoveries where checkout_id=$1",[session.id]);
+ assert.equal(latest.status,"suppressed");
+ assert.equal(latest.next_send_at,null);
+});
+
 test("no recovery provider means no queued or sent emails",async()=>{
  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
  await checkout.setCustomer(session.id,customer({recoveryOptIn:true}));
