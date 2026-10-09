@@ -2,7 +2,7 @@
 import {revalidatePath} from "next/cache";
 import {adminMutation} from "@/lib/admin-server";
 
-export type BundleActionState={ok:boolean;message:string};
+export type BundleActionState={ok:boolean;message:string;bundleId?:string};
 export async function saveBundleAction(_:BundleActionState,form:FormData):Promise<BundleActionState>{
   try{
     const id=String(form.get("id")||"").trim();
@@ -19,11 +19,11 @@ export async function saveBundleAction(_:BundleActionState,form:FormData):Promis
       endsAt:String(form.get("endsAt")||"")||null,
       components,
     };
-    await adminMutation(id?"/v1/admin/bundles/"+encodeURIComponent(id):"/v1/admin/bundles",{
+    const result=await adminMutation<{id:string;ok:boolean}>(id?"/v1/admin/bundles/"+encodeURIComponent(id):"/v1/admin/bundles",{
       method:id?"PATCH":"POST",body:JSON.stringify(body),
     });
     revalidatePath("/bundles");
-    return {ok:true,message:id?"Bundle saved. Existing open checkouts with changed contents will require review.":"Bundle created successfully."};
+    return {ok:true,bundleId:result.id,message:id?"Bundle saved. Existing open checkouts with changed contents will require review.":"Bundle created successfully."};
   }catch(e){
     return {ok:false,message:e instanceof Error?e.message:"Unable to save bundle."};
   }
