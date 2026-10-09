@@ -95,9 +95,7 @@ export class ProductsService{
       const responsive=this.delivery.responsiveSet(m);
       const stored=(m.stored_renditions||[]).map((r:any)=>({
         ...r,
-        url:r.objectKey&&process.env.R2_PUBLIC_BASE_URL
-          ?process.env.R2_PUBLIC_BASE_URL.replace(/\/$/,"")+"/"+r.objectKey
-          :null,
+        url:r.objectKey?this.delivery.renditionPublicUrl(r.objectKey):null,
       }));
       return {
         id:m.id,
@@ -137,6 +135,19 @@ export class ProductsService{
       "select pm.* from product_media pm join products p on p.id=pm.product_id where p.store_id=$1 order by pm.product_id, case when pm.role='primary' then 0 else 1 end,pm.position,pm.created_at",
       [storeId]
     );
+    // Pre-generated WebP card assets avoid shipping full-size originals when
+    // Cloudflare dynamic Image Resizing is not configured.
+    const mediaIds=media.rows.map((m:any)=>m.id);
+    const prepared=new Map<string,string>();
+    if(mediaIds.length&&!this.delivery.dynamicTransformsEnabled()){
+      const renditions=await this.db.query<any>(
+        "select distinct on (media_id) media_id,object_key from media_renditions where media_id=any($1::uuid[]) and status='ready' and preset='card_desktop' and format='webp' order by media_id",
+        [mediaIds]
+      );
+      for(const item of renditions.rows) {
+        if(item.object_key) prepared.set(String(item.media_id),this.delivery.renditionPublicUrl(String(item.object_key)));
+      }
+    }
     const byProduct=new Map<string,any[]>();
     for(const item of media.rows){
       const list=byProduct.get(item.product_id)||[];
@@ -148,8 +159,8 @@ export class ProductsService{
       const productMedia=byProduct.get(p.id)||[];
       const primary=productMedia[0];
       const secondary=productMedia[1]||primary;
-      const primaryUrl=primary?this.delivery.url(primary,"card_desktop"):null;
-      const secondaryUrl=secondary?this.delivery.url(secondary,"card_desktop"):primaryUrl;
+      const primaryUrl=primary?(prepared.get(String(primary.id))||this.delivery.url(primary,"card_desktop")):null;
+      const secondaryUrl=secondary?(prepared.get(String(secondary.id))||this.delivery.url(secondary,"card_desktop")):primaryUrl;
       return {
         id:p.id,
         slug:p.handle,
