@@ -71,7 +71,7 @@ export class AffiliatesService{
     const [clicks,aggregated,commissions,payouts]=await Promise.all([
       this.db.query<any>("select count(*)::int n from affiliate_visits where affiliate_id=$1",[aff.id]),
       this.db.query<any>("select count(*)::int orders,coalesce(sum(amount) filter(where status='pending'),0) pending,coalesce(sum(amount) filter(where status='approved'),0) approved,coalesce(sum(amount) filter(where status='paid'),0) paid,coalesce(sum(amount) filter(where status='reversal_due'),0) reversal_due from affiliate_commissions where affiliate_id=$1",[aff.id]),
-      this.db.query<any>("select c.id,c.amount,c.basis_amount,c.rate,c.currency,c.status,c.created_at,c.eligible_at,o.order_number from affiliate_commissions c join orders o on o.id=c.order_id where c.affiliate_id=$1 order by c.created_at desc limit 60",[aff.id]),
+      this.db.query<any>("select c.id,c.amount,c.basis_amount,c.rate,c.currency,c.status,c.created_at,c.eligible_at,o.order_number,o.fulfilled_at,o.created_at as order_created_at from affiliate_commissions c join orders o on o.id=c.order_id where c.affiliate_id=$1 order by c.created_at desc limit 60",[aff.id]),
       this.db.query<any>("select id,amount,currency,method,transfer_reference,destination_last4,recorded_at from affiliate_payouts where affiliate_id=$1 order by recorded_at desc limit 40",[aff.id])
     ]);
     const row=aggregated.rows[0]||{};
@@ -84,7 +84,7 @@ export class AffiliatesService{
         approved:money(row.approved),paid:money(row.paid),reversalDue:money(row.reversal_due)},
       commissions:commissions.rows.map(x=>({id:x.id,orderNumber:x.order_number,amount:money(x.amount),
         basisAmount:money(x.basis_amount),rate:Number(x.rate),currency:x.currency,status:x.status,
-        createdAt:x.created_at,eligibleAt:x.eligible_at})),
+        createdAt:x.created_at,eligibleAt:new Date(Math.max(new Date(x.eligible_at).getTime(),new Date(x.fulfilled_at||x.order_created_at).getTime()+Number(program.holdDays)*86400000)).toISOString()})),
       payouts:payouts.rows.map(x=>({...x,amount:money(x.amount)}))
     };
   }
@@ -198,7 +198,7 @@ export class AffiliatesService{
   }
   private async payableCheck(client:PoolClient,id:string,storeId:string){
     const r=await client.query<any>(
-      "select c.*,o.status order_status,o.payment_status,o.fulfillment_status,o.fulfilled_at,o.created_at order_created_at,a.status affiliate_status,a.payout_method,a.payout_recipient,a.payout_destination,s.hold_days from affiliate_commissions c join orders o on o.id=c.order_id join affiliates a on a.id=c.affiliate_id left join affiliate_program_settings s on s.store_id=c.store_id where c.id=$1 and c.store_id=$2 for update of c",[id,storeId]);
+      "select c.*,o.status order_status,o.payment_status,o.fulfillment_status,o.fulfilled_at,o.created_at order_created_at,a.status affiliate_status,a.payout_method,a.payout_recipient,a.payout_destination,s.hold_days from affiliate_commissions c join orders o on o.id=c.order_id join affiliates a on a.id=c.affiliate_id left join affiliate_program_settings s on s.store_id=c.store_id where c.id=$1 and c.store_id=$2 for update of c,o",[id,storeId]);
     if(!r.rowCount)throw new NotFoundException("Commission not found");
     const c=r.rows[0];
     if(c.order_status==="canceled"||c.payment_status!=="paid"||c.fulfillment_status!=="fulfilled"||c.affiliate_status!=="approved")
