@@ -125,6 +125,11 @@ export class RecoveryService {
         await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1",[row.checkout_id]);
         return {skipped:true};
       }
+      const recent=await client.query<{n:number}>("select count(*)::int as n from checkout_recovery_attempts attempt join checkout_recoveries prior on prior.checkout_id=attempt.checkout_id where attempt.store_id=$1 and prior.email_snapshot=$2 and attempt.status='sent' and attempt.attempted_at>=now()-interval '7 days'",[row.store_id,row.email_snapshot]);
+      if(Number(recent.rows[0]?.n||0)>=3){
+        await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1",[row.checkout_id]);
+        return {skipped:true};
+      }
       const claim=await client.query<any>("insert into checkout_recovery_attempts(store_id,checkout_id,step,status) values($1,$2,$3,'claimed') on conflict(checkout_id,step) do nothing returning id",[row.store_id,row.checkout_id,step]);
       if(!claim.rowCount){
         await client.query("update checkout_recoveries set next_send_at=now()+interval '30 minutes' where checkout_id=$1",[row.checkout_id]);
