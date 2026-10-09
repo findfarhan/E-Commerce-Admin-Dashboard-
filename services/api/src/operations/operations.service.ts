@@ -92,7 +92,7 @@ export class OperationsService{
         {key:"checkout_expiry",name:"Expire stale checkouts",status:"active",trigger:"Every 10 minutes",action:"Close open checkout sessions after expiry",scope:"internal"},
         {key:"image_jobs",name:"Media job retry",status:"active",trigger:"Queued media job",action:"Retry failed image rendition jobs up to 3 attempts",scope:"internal"},
         {key:"inventory_watch",name:"Low stock signal",status:"active",trigger:"Admin dashboard refresh",action:"Surface variants at 3 units or below",scope:"internal"},
-        {key:"abandoned_checkout",name:"Abandoned checkout outreach",status:"deferred",trigger:"Checkout expires",action:"Requires email or messaging provider",scope:"external"},
+        {key:"abandoned_checkout",name:"Consented checkout recovery",status:process.env.RECOVERY_EMAIL_ENABLED==="true"&&Boolean(process.env.RESEND_API_KEY&&process.env.RECOVERY_FROM_EMAIL&&process.env.RECOVERY_SIGNING_SECRET)?"active":"paused",trigger:"Consent → 1h, 24h, 72h",action:"Suppress after purchase or unsubscribe; fresh checkout at current prices",scope:"external"},
       ],
       jobs:byStatus,
       openCheckouts:Number(openCheckouts.rows[0]?.count||0),

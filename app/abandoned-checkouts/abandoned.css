@@ -1,0 +1,26 @@
+.recovery-admin-page{min-width:0;padding-bottom:50px}
+.recovery-admin-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:20px 0}
+.recovery-admin-kpis article{border:1px solid var(--line);padding:25px 22px;border-radius:13px;background:var(--card,rgba(130,130,150,.06));display:grid;gap:9px;min-width:0}
+.recovery-admin-kpis span,.recovery-admin-kpis small{font-size:12px;opacity:.7}
+.recovery-admin-kpis strong{font-size:clamp(22px,3vw,39px);overflow-wrap:anywhere}
+.recovery-admin-status{border:1px solid var(--line);padding:21px 24px;border-radius:12px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:19px;background:var(--card,rgba(130,130,150,.06))}
+.recovery-admin-status>div{max-width:750px}
+.recovery-admin-status b{font-size:15px}
+.recovery-admin-status p{line-height:1.6;font-size:13px;opacity:.7;margin:8px 0 0}
+.recovery-admin-status>span{border:1px solid var(--line);padding:10px 13px;border-radius:5px;font-size:12px;white-space:nowrap}
+.recovery-admin-table,.recovery-attempts{padding:25px;margin-bottom:21px}
+.recovery-admin-table .panel-head p{max-width:600px;line-height:1.6;font-size:13px;opacity:.7}
+.recovery-admin-table table{min-width:850px}
+.recovery-state{display:inline-block;text-transform:capitalize;font-size:12px;padding:7px 10px;border-radius:25px;background:rgba(130,130,150,.15)}
+.recovery-state.recovered{color:#61ae8d}
+.recovery-state.pending{color:#b4a0e2}
+.recovery-state.suppressed{opacity:.7}
+.recovery-attempt-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.recovery-attempt-grid article{border:1px solid var(--line);padding:17px;border-radius:8px;display:grid;gap:7px}
+.recovery-attempt-grid article>span,.recovery-attempt-grid article small{font-size:12px;opacity:.7}
+.recovery-attempt-grid article strong{font-size:23px}
+.recovery-admin-foot{font-size:12px;line-height:1.7;opacity:.65}
+.recovery-admin-empty{padding:30px}
+@media(max-width:1050px){.recovery-admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.recovery-admin-kpis{grid-template-columns:1fr 1fr}.recovery-admin-status{display:grid}.recovery-attempt-grid{grid-template-columns:1fr 1fr}.recovery-admin-table,.recovery-attempts{padding:16px}}
+@media(max-width:390px){.recovery-admin-kpis,.recovery-attempt-grid{grid-template-columns:1fr}}

@@ -7,10 +7,10 @@ function requiredPermission(url:string){
   if(path.includes("/gift-packaging")||path.includes("/bundles")||path.includes("/products")||path.includes("/collections")||path.includes("/metafield")||path.includes("/media")) return "catalog";
   if(path.includes("/orders")||path.includes("/draft-orders")||path.includes("/returns")||path.includes("/payments")) return "orders";
   if(path.includes("/inventory")||path.includes("/purchase-orders")||path.includes("/suppliers")||path.includes("/locations")) return "inventory";
-  if(path.includes("/customers")||path.includes("/inbox")||path.includes("/commissions")) return "crm";
+  if(path.includes("/recovery")||path.includes("/customers")||path.includes("/inbox")||path.includes("/commissions")) return "crm";
   if(path.includes("/affiliates")) return "marketing";
   if(path.includes("/discount")||path.includes("/shipping")||path.includes("/tax")||path.includes("/seo")||path.includes("/channels")) return "marketing";
-  if(path.includes("/analytics")||path.includes("/report")) return "analytics";
+  if(path.includes("/conversion")||path.includes("/analytics")||path.includes("/report")) return "analytics";
   return "dashboard";
 }
 function verifySession(token:string){

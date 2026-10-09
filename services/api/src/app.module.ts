@@ -23,6 +23,8 @@ import {StorefrontAccountsModule} from "./storefront-accounts/storefront-account
 import {AffiliatesModule} from "./affiliates/affiliates.module";
 import {BundlesModule} from "./bundles/bundles.module";
 import {GiftPackagingModule} from "./gift-packaging/gift-packaging.module";
+import {RecoveryModule} from "./recovery/recovery.module";
+import {AnalyticsModule} from "./analytics/analytics.module";
 
 @Module({
   imports:[
@@ -44,6 +46,8 @@ import {GiftPackagingModule} from "./gift-packaging/gift-packaging.module";
     AffiliatesModule,
     BundlesModule,
     GiftPackagingModule,
+    RecoveryModule,
+    AnalyticsModule,
     JobsModule,
     OrdersModule,
     CustomersModule,

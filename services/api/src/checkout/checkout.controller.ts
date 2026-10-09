@@ -16,6 +16,9 @@ export class CheckoutController{
   @Post(":id/customer")
   customer(@Param("id") id:string,@Body() body:any){return this.checkout.setCustomer(id,body);}
 
+  @Post(":id/recovery-consent/withdraw")
+  withdraw(@Param("id") id:string){return this.checkout.withdrawRecoveryConsent(id);}
+
   @Post(":id/complete")
   complete(@Param("id") id:string,@Headers("idempotency-key") key:string|undefined,@Body() body:any){
     return this.checkout.complete(id,key,body);
