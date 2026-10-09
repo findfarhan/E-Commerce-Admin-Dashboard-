@@ -16,6 +16,8 @@ const {Pool}=require("pg");
 require("reflect-metadata");
 const {CheckoutService}=require("../dist/checkout/checkout.service.js");
 const {CollectionsService}=require("../dist/collections/collections.service.js");
+const {BundlesService}=require("../dist/bundles/bundles.service.js");
+const {OrdersService}=require("../dist/orders/orders.service.js");
 const {DatabaseService}=require("../dist/database/database.service.js");
 
 const testUrl=process.env.TEST_DATABASE_URL;
@@ -36,7 +38,9 @@ process.env.STORE_DOMAIN="checkout-regression.invalid";
 const root=path.resolve(__dirname,"../../..");
 const pool=new Pool({connectionString:testUrl,max:8});
 const db=new DatabaseService();
-const checkout=new CheckoutService(db,new CollectionsService(db));
+const bundles=new BundlesService(db,{listStorefront:async()=>[]});
+const checkout=new CheckoutService(db,new CollectionsService(db),bundles);
+const orders=new OrdersService(db);
 let fixture;
 
 async function one(sql,params=[]){
@@ -111,6 +115,122 @@ beforeEach(async()=>{
 });
 after(async()=>{
   await Promise.allSettled([db.onModuleDestroy(),pool.end()]);
+});
+
+
+async function seedBundle(){
+  const product=await one("insert into products(store_id,handle,title,status,taxable,weight_grams) values($1,'qa-necklace','QA Necklace','active',true,5) returning id",[fixture.storeId]);
+  const variant=await one("insert into product_variants(product_id,sku,price,inventory,status,weight_grams) values($1,'QA-NECK-01',12000,4,'active',5) returning id",[product.id]);
+  await pool.query("insert into inventory_levels(location_id,variant_id,on_hand,reserved) values($1,$2,4,0)",[fixture.locationId,variant.id]);
+  const saved=await bundles.create({
+    title:"QA Ring & Necklace Set",handle:"qa-ring-necklace",
+    description:"Bundle QA only",status:"active",
+    discountKind:"fixed",discountValue:5000,
+    components:[{variantId:fixture.variantId,quantity:1},{variantId:variant.id,quantity:1}],
+  });
+  return {bundleId:saved.id,necklaceVariantId:variant.id};
+}
+
+test("fixed-price jewelry bundle checks out real component variants with an audited discount",async()=>{
+  const {bundleId,necklaceVariantId}=await seedBundle();
+  const session=await checkout.create({items:[],bundles:[{bundleId,quantity:1}]});
+  assert.equal(Number(session.subtotal),90000);
+  const review=await checkout.setCustomer(session.id,customer());
+  assert.equal(review.total,85000);
+  assert.equal(Number(review.bundle_discount_amount),5000);
+  const completed=await checkout.complete(session.id,"qa-bundle-main-123",{expectedTotal:review.total});
+  assert.equal(completed.order.total,85000);
+  const saved=await one("select subtotal,discount_amount,bundle_discount_amount,total from orders where id=$1",[completed.order.id]);
+  assert.deepEqual([Number(saved.subtotal),Number(saved.discount_amount),Number(saved.bundle_discount_amount),Number(saved.total)],[90000,5000,5000,85000]);
+  const orderItems=await pool.query("select sku,quantity from order_items where order_id=$1 order by sku",[completed.order.id]);
+  assert.deepEqual(orderItems.rows.map(x=>x.sku).sort(),["QA-DIA-5","QA-NECK-01"]);
+  assert.deepEqual(await inventory(),{variant:4,onHand:4,reserved:0});
+  assert.equal(Number((await one("select inventory from product_variants where id=$1",[necklaceVariantId])).inventory),3);
+  const allocation=await one("select title_snapshot,discount_amount,component_snapshot from order_bundle_allocations where order_id=$1",[completed.order.id]);
+  assert.equal(Number(allocation.discount_amount),5000);
+  assert.equal(allocation.component_snapshot.length,2);
+  await checkout.complete(session.id,"qa-bundle-repeat-123");
+  assert.equal(await count("orders"),1);
+});
+
+test("regular cart item plus bundles cannot over-consume the same variant stock",async()=>{
+  const {bundleId}=await seedBundle();
+  await assert.rejects(()=>checkout.create({
+    items:[{variantId:fixture.variantId,quantity:4}],
+    bundles:[{bundleId,quantity:2}],
+  }),/only 5 item/i);
+  assert.equal(await count("checkout_sessions"),0);
+  assert.equal(await count("inventory_movements"),0);
+});
+
+test("bundle tax saving is allocated only to taxable bundle components",async()=>{
+  const {bundleId}=await seedBundle();
+  await pool.query("update products set taxable=false where store_id=$1 and handle='qa-necklace'",[fixture.storeId]);
+  await pool.query("insert into tax_rules(store_id,name,country,rate,inclusive,active) values($1,'QA 10% Tax','Pakistan',0.10,false,true)",[fixture.storeId]);
+  // Two taxable rings: one standalone plus one inside the bundle.
+  // The non-taxable necklace must not shift bundle savings to the extra ring.
+  const session=await checkout.create({
+    items:[{variantId:fixture.variantId,quantity:1}],
+    bundles:[{bundleId,quantity:1}],
+  });
+  const quote=await checkout.setCustomer(session.id,customer());
+  assert.equal(Number(quote.subtotal),168000);
+  assert.equal(Number(quote.discount_amount),5000);
+  // Discount taxable share: 5000*(78000/90000)=4333.33.
+  // Tax base: 156000-4333.33 = 151666.67, 10% tax = 15166.67.
+  assert.equal(Number(quote.exclusive_tax_amount),15166.67);
+  assert.equal(Number(quote.total),178166.67);
+  const order=await checkout.complete(session.id,"qa-bundle-tax-123",{expectedTotal:quote.total});
+  assert.equal(order.order.total,178166.67);
+});
+
+test("archived or revised bundles are rejected at completion without creating orders",async()=>{
+  const {bundleId}=await seedBundle();
+  const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
+  const review=await checkout.setCustomer(session.id,customer());
+  await pool.query("update jewelry_bundles set status='archived' where id=$1",[bundleId]);
+  await assert.rejects(()=>checkout.complete(session.id,"qa-bundle-archive-123",{expectedTotal:review.total}),/Bundle is unavailable/);
+  assert.equal(await count("orders"),0);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
+});
+
+test("coupon and bundle discounts cannot be combined",async()=>{
+  const {bundleId}=await seedBundle();
+  const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
+  await assert.rejects(()=>checkout.setCustomer(session.id,customer({discountCode:"WELCOME10"})),/cannot be combined/i);
+  assert.equal(await count("orders"),0);
+});
+
+test("bundle COD completion requires an explicitly reviewed total",async()=>{
+  const {bundleId}=await seedBundle();
+  const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
+  await checkout.setCustomer(session.id,customer());
+  await assert.rejects(()=>checkout.complete(session.id,"qa-unreviewed-bundle-123"),/reviewed final total is required/i);
+  assert.equal(await count("orders"),0);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
+});
+
+test("changed component prices invalidate the customer's bundle checkout quote",async()=>{
+  const {bundleId}=await seedBundle();
+  const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
+  const review=await checkout.setCustomer(session.id,customer());
+  await pool.query("update product_variants set price=80000 where id=$1",[fixture.variantId]);
+  await assert.rejects(()=>checkout.complete(session.id,"qa-bundle-price-123",{expectedTotal:review.total}),/Bundle pricing changed/);
+  assert.equal(await count("orders"),0);
+});
+
+test("canceling a COD bundle restores every real jewelry variant exactly once",async()=>{
+  const {bundleId,necklaceVariantId}=await seedBundle();
+  const session=await checkout.create({bundles:[{bundleId,quantity:1}]});
+  const reviewed=await checkout.setCustomer(session.id,customer());
+  const confirmed=await checkout.complete(session.id,"qa-bundle-cancel-123",{expectedTotal:reviewed.total});
+  const canceled=await orders.cancel(confirmed.order.id,{reason:"QA canceled"});
+  assert.equal(canceled.ok,true);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
+  assert.equal(Number((await one("select inventory from product_variants where id=$1",[necklaceVariantId])).inventory),4);
+  const again=await orders.cancel(confirmed.order.id,{reason:"QA duplicate cancellation"});
+  assert.equal(again.idempotent,true);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
 });
 
 test("COD checkout creates exactly one pending order, decrements variant/location stock, and queues confirmation",async()=>{
