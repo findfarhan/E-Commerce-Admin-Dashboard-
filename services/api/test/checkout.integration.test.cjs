@@ -17,6 +17,7 @@ require("reflect-metadata");
 const {CheckoutService}=require("../dist/checkout/checkout.service.js");
 const {CollectionsService}=require("../dist/collections/collections.service.js");
 const {BundlesService}=require("../dist/bundles/bundles.service.js");
+const {GiftPackagingService}=require("../dist/gift-packaging/gift-packaging.service.js");
 const {OrdersService}=require("../dist/orders/orders.service.js");
 const {DatabaseService}=require("../dist/database/database.service.js");
 
@@ -39,7 +40,8 @@ const root=path.resolve(__dirname,"../../..");
 const pool=new Pool({connectionString:testUrl,max:8});
 const db=new DatabaseService();
 const bundles=new BundlesService(db,{listStorefront:async()=>[]});
-const checkout=new CheckoutService(db,new CollectionsService(db),bundles);
+const packaging=new GiftPackagingService(db);
+const checkout=new CheckoutService(db,new CollectionsService(db),bundles,packaging);
 const orders=new OrdersService(db);
 let fixture;
 
@@ -117,6 +119,79 @@ after(async()=>{
   await Promise.allSettled([db.onModuleDestroy(),pool.end()]);
 });
 
+
+async function seedPackaging(overrides={}){
+  const body={title:"Gift Box QA",sku:"QA-GIFT-BOX",price:450,inventory:2,weightGrams:75,taxable:false,status:"active",position:0,description:"Test only",...overrides};
+  const saved=await packaging.save(null,body);
+  return saved.id;
+}
+
+test("gift packaging price is in the reviewed COD quote and recorded with real SKU deduction",async()=>{
+  const optionId=await seedPackaging();
+  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  const quote=await checkout.setCustomer(session.id,customer({isGift:true,giftMessage:"For the special day",giftPackagingId:optionId}));
+  assert.equal(quote.total,78450);
+  assert.equal(quote.gift_packaging_price,450);
+  assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),2);
+  const placed=await checkout.complete(session.id,"qa-gift-package-123",{expectedTotal:quote.total});
+  const saved=await one("select is_gift,gift_message,gift_packaging_sku_snapshot,gift_packaging_price,total from orders where id=$1",[placed.order.id]);
+  assert.equal(saved.is_gift,true);
+  assert.equal(saved.gift_message,"For the special day");
+  assert.equal(saved.gift_packaging_sku_snapshot,"QA-GIFT-BOX");
+  assert.equal(Number(saved.gift_packaging_price),450);
+  assert.equal(Number(saved.total),78450);
+  assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),1);
+  assert.equal(Number((await one("select count(*)::int n from gift_packaging_movements where order_id=$1 and movement_type='order_sale'",[placed.order.id])).n),1);
+  await checkout.complete(session.id,"qa-gift-repeat-123",{expectedTotal:quote.total});
+  assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),1);
+});
+
+test("gift packaging is restored only once when an unpaid order is canceled",async()=>{
+  const optionId=await seedPackaging();
+  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  const quote=await checkout.setCustomer(session.id,customer({isGift:true,giftPackagingId:optionId}));
+  const placed=await checkout.complete(session.id,"qa-gift-cancel-123",{expectedTotal:quote.total});
+  await orders.cancel(placed.order.id,{reason:"QA test canceled"});
+  assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),2);
+  await orders.cancel(placed.order.id,{reason:"QA duplicate"});
+  assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),2);
+  assert.equal(Number((await one("select count(*)::int n from gift_packaging_movements where order_id=$1",[placed.order.id])).n),2);
+});
+
+test("changed packaging prices and sold-out boxes cannot complete a stale quote",async()=>{
+  const optionId=await seedPackaging();
+  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  const quote=await checkout.setCustomer(session.id,customer({isGift:true,giftPackagingId:optionId}));
+  await pool.query("update gift_packaging_options set price=650 where id=$1",[optionId]);
+  await assert.rejects(()=>checkout.complete(session.id,"qa-gift-stale-123",{expectedTotal:quote.total}),/Gift packaging details changed/i);
+  assert.equal(await count("orders"),0);
+  assert.deepEqual(await inventory(),{variant:5,onHand:5,reserved:0});
+  await pool.query("update gift_packaging_options set price=450,inventory=0 where id=$1",[optionId]);
+  await assert.rejects(()=>checkout.complete(session.id,"qa-gift-soldout-456",{expectedTotal:quote.total}),/packaging is unavailable/i);
+  assert.equal(await count("orders"),0);
+});
+
+test("packaging cannot be added without gift order, and free gift wrapping has zero added charge",async()=>{
+  const optionId=await seedPackaging({price:0});
+  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  await assert.rejects(()=>checkout.setCustomer(session.id,customer({isGift:false,giftPackagingId:optionId})),/Enable gift order/i);
+  const quoted=await checkout.setCustomer(session.id,customer({isGift:true,giftPackagingId:optionId}));
+  assert.equal(quoted.total,78000);
+  assert.equal(quoted.gift_packaging_price,0);
+  await assert.rejects(()=>checkout.complete(session.id,"qa-gift-no-quote-123"),/reviewed final total is required/i);
+  assert.equal(await count("orders"),0);
+});
+
+test("taxable gift packaging price contributes to tax base without discounting product SKUs",async()=>{
+  const optionId=await seedPackaging({price:450,taxable:true});
+  await pool.query("insert into tax_rules(store_id,name,country,rate,inclusive,active) values($1,'QA Packaging 10%','Pakistan',0.10,false,true)",[fixture.storeId]);
+  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  const quote=await checkout.setCustomer(session.id,customer({isGift:true,giftPackagingId:optionId}));
+  assert.equal(quote.exclusive_tax_amount,7845);
+  assert.equal(quote.total,86295);
+  const placed=await checkout.complete(session.id,"qa-gift-tax-123",{expectedTotal:quote.total});
+  assert.equal(placed.order.total,86295);
+});
 
 async function seedBundle(){
   const product=await one("insert into products(store_id,handle,title,status,taxable,weight_grams) values($1,'qa-necklace','QA Necklace','active',true,5) returning id",[fixture.storeId]);
