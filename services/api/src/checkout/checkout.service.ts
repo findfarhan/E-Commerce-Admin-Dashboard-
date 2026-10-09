@@ -298,7 +298,9 @@ export class CheckoutService{
 
       let subtotal=0;
       const locked:any[]=[];
-      for(const line of groupedLines.values()){
+      // Consistent lock order prevents intersecting bundle/standalone purchases
+      // from acquiring SKU locks in opposite order.
+      for(const line of [...groupedLines.values()].sort((a:any,b:any)=>String(a.variant_id).localeCompare(String(b.variant_id)))){
         const variantResult=await client.query<any>("select v.id,v.sku,v.price,v.inventory,v.status,v.weight_grams,p.id as product_id,p.title,p.status as product_status,p.taxable,p.weight_grams as product_weight_grams from product_variants v join products p on p.id=v.product_id where v.id=$1 and p.store_id=$2 for update",[line.variant_id,store.id]);
         if(!variantResult.rowCount) throw new ConflictException("A variant no longer exists");
         const variant=variantResult.rows[0];
@@ -377,8 +379,10 @@ export class CheckoutService{
       exclusiveTaxAmount=Math.round(exclusiveTaxAmount*100)/100;
       const taxAmount=Math.round((inclusiveTaxAmount+exclusiveTaxAmount)*100)/100;
       const total=Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount);
-      // Keep the customer's reviewed COD total authoritative. Existing clients
-      // remain supported when expectedTotal is omitted.
+      // Bundles may only complete against an explicit customer-reviewed
+      // amount. Keep optional quotes for existing non-bundle integrations.
+      if(bundleQuote.bundleCount&&body?.expectedTotal===undefined)
+        throw new BadRequestException("A reviewed final total is required for jewelry sets");
       if(body?.expectedTotal!==undefined){
         const expectedTotal=Number(body.expectedTotal);
         if(!Number.isFinite(expectedTotal)||expectedTotal<0) throw new BadRequestException("Expected checkout total is invalid");
