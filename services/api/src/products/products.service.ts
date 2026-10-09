@@ -145,7 +145,10 @@ export class ProductsService{
         [mediaIds]
       );
       for(const item of renditions.rows) {
-        if(item.object_key) prepared.set(String(item.media_id),this.delivery.renditionPublicUrl(String(item.object_key)));
+        if(item.object_key){
+          const publicUrl=this.delivery.renditionPublicUrl(String(item.object_key));
+          if(publicUrl)prepared.set(String(item.media_id),publicUrl);
+        }
       }
     }
     const byProduct=new Map<string,any[]>();
