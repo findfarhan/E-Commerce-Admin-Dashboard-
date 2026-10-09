@@ -4,7 +4,7 @@ import {adminRequest} from "@/lib/admin-api";
 import "./abandoned.css";
 
 type Recovery={
- summary:{total:number;pending:number;recovered:number;suppressed:number;recoveredValue:number;deliveryEnabled:boolean};
+ summary:{total:number;pending:number;recovered:number;suppressed:number;expired:number;recoveredValue:number;deliveryEnabled:boolean};
  items:Array<{checkout_id:string;email_snapshot:string;consent_at:string;status:string;send_step:number;next_send_at:string|null;last_sent_at:string|null;subtotal:number;total:number;expires_at:string}>;
  steps:Array<{step:number;status:string;count:number}>;
 };
@@ -33,7 +33,7 @@ export default async function AbandonedCheckouts(){
       <span>{report.summary.deliveryEnabled?"Enabled":"Paused — no outbound email"}</span>
     </section>
     <section className="panel recovery-admin-table">
-     <div className="panel-head"><div><span>CONSENTED CHECKOUTS</span><h2>Recovery opportunities</h2><p>Only checkouts with explicit email reminder consent appear here. Recovery links are never exposed in admin responses.</p></div></div>
+     <div className="panel-head"><div><span>CONSENTED CHECKOUTS</span><h2>Recovery opportunities</h2><p>Only checkouts with explicit email reminder consent appear here. {report.summary.expired} consent window(s) expired in the last 30 days. Recovery links are never exposed in admin responses.</p></div></div>
      <div className="table-wrap"><table className="data-table">
       <thead><tr><th>CHECKOUT</th><th>EMAIL</th><th>STATUS</th><th>ATTEMPTS</th><th>NEXT REMINDER</th><th className="right">VALUE</th></tr></thead>
       <tbody>
