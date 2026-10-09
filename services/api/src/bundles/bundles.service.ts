@@ -145,7 +145,16 @@ export class BundlesService{
     let discount=0;
     for(const row of rows.rows){
       const current=await this.purchase(client,storeId,String(row.bundle_id),Number(row.quantity));
-      if(JSON.stringify(current.snapshot)!==JSON.stringify(row.component_snapshot))throw new ConflictException("Bundle contents changed. Please restart checkout.");
+      // PostgreSQL jsonb normalizes object-key ordering. Compare stable
+      // variant/quantity tuples instead of raw JSON.stringify object keys.
+      const saved=Array.isArray(row.component_snapshot)?row.component_snapshot:[];
+      const sameComponents=saved.length===current.snapshot.length&&
+        current.snapshot.every((component,index)=>{
+          const prior=saved[index];
+          return String(prior?.variantId||"")===component.variantId &&
+            Number(prior?.quantity)===component.quantity;
+        });
+      if(!sameComponents)throw new ConflictException("Bundle contents changed. Please restart checkout.");
       // Immutable audit snapshots: do not fulfill against a different price or
       // discount than the customer originally selected, even on a 100%-off set.
       if(Math.round(current.grossAmount*100)!==Math.round(Number(row.gross_amount)*100)
