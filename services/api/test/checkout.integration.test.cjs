@@ -146,6 +146,18 @@ test("gift packaging price is in the reviewed COD quote and recorded with real S
   assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),1);
 });
 
+test("the last available packaging unit still permits an idempotent completed-checkout retry",async()=>{
+  const optionId=await seedPackaging({inventory:1});
+  const checkoutSession=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
+  const quoted=await checkout.setCustomer(checkoutSession.id,customer({isGift:true,giftPackagingId:optionId}));
+  const placed=await checkout.complete(checkoutSession.id,"gift-last-box-key-123",{expectedTotal:quoted.total});
+  assert.equal(Number((await one("select inventory from gift_packaging_options where id=$1",[optionId])).inventory),0);
+  const replay=await checkout.complete(checkoutSession.id,"gift-last-box-key-123",{expectedTotal:quoted.total});
+  assert.equal(replay.idempotent,true);
+  assert.equal(replay.order.id,placed.order.id);
+  assert.equal(await count("orders"),1);
+});
+
 test("gift packaging is restored only once when an unpaid order is canceled",async()=>{
   const optionId=await seedPackaging();
   const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
