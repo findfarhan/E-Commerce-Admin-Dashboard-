@@ -98,9 +98,10 @@ export class RecoveryService {
   this.running=true;
   try {
    // Durable claim with unique(checkout_id,step) across concurrent workers.
+   const storeId=await this.store();
    for(let i=0;i<10;i++){
     const due=await this.db.transaction(async client=>{
-      const result=await client.query<any>("select cr.*,c.status as checkout_status,c.customer_email from checkout_recoveries cr join checkout_sessions c on c.id=cr.checkout_id where cr.status='pending' and cr.send_step<3 and cr.next_send_at<=now() and cr.consent_at>now()-interval '7 days' order by cr.next_send_at for update of cr skip locked limit 1");
+      const result=await client.query<any>("select cr.*,c.status as checkout_status,c.customer_email from checkout_recoveries cr join checkout_sessions c on c.id=cr.checkout_id where cr.store_id=$1 and cr.status='pending' and cr.send_step<3 and cr.next_send_at<=now() and cr.consent_at>now()-interval '7 days' order by cr.next_send_at for update of cr skip locked limit 1",[storeId]);
       if(!result.rowCount)return null;
       const row=result.rows[0],step=Number(row.send_step)+1;
       if(row.checkout_status==="completed"||row.customer_email!==row.email_snapshot){
