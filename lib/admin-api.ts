@@ -7,14 +7,10 @@ export async function adminRequest<T>(path:string,_revalidate=0):Promise<T|null>
   try{
     const jar=await cookies();
     const token=jar.get("jc_session")?.value;
-    const adminKey=process.env.ADMIN_API_KEY||"";
-    if(!token&&!adminKey){
-      if(process.env.NODE_ENV==="production") throw new Error("Admin authentication is not configured.");
-      return null;
-    }
-    const headers:Record<string,string>={Accept:"application/json"};
-    if(token) headers.Authorization="Bearer "+token;
-    else headers["X-Admin-Key"]=adminKey;
+    // Never fall back to a server-wide admin key for browser dashboard reads.
+    // Every request must be bound to an authenticated staff session.
+    if(!token) throw new Error("Authenticated staff session is required.");
+    const headers:Record<string,string>={Accept:"application/json",Authorization:"Bearer "+token};
     const response=await fetch(apiBase+path,{
       headers,
       cache:"no-store",
