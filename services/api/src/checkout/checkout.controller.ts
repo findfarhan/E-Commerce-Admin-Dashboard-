@@ -17,7 +17,7 @@ export class CheckoutController{
   customer(@Param("id") id:string,@Body() body:any){return this.checkout.setCustomer(id,body);}
 
   @Post(":id/complete")
-  complete(@Param("id") id:string,@Headers("idempotency-key") key:string|undefined){
-    return this.checkout.complete(id,key);
+  complete(@Param("id") id:string,@Headers("idempotency-key") key:string|undefined,@Body() body:any){
+    return this.checkout.complete(id,key,body);
   }
 }

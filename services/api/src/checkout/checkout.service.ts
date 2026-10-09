@@ -229,7 +229,7 @@ export class CheckoutService{
     });
   }
 
-  async complete(id:string,idempotencyKey?:string){
+  async complete(id:string,idempotencyKey?:string,body?:{expectedTotal?:number}){
     if(!idempotencyKey||idempotencyKey.length<8) throw new BadRequestException("Idempotency-Key header is required");
     const store=await this.store();
 
@@ -347,6 +347,15 @@ export class CheckoutService{
       exclusiveTaxAmount=Math.round(exclusiveTaxAmount*100)/100;
       const taxAmount=Math.round((inclusiveTaxAmount+exclusiveTaxAmount)*100)/100;
       const total=Math.max(0,subtotal-discountAmount+shippingAmount+exclusiveTaxAmount);
+      // Keep the customer's reviewed COD total authoritative. Existing clients
+      // remain supported when expectedTotal is omitted.
+      if(body?.expectedTotal!==undefined){
+        const expectedTotal=Number(body.expectedTotal);
+        if(!Number.isFinite(expectedTotal)||expectedTotal<0) throw new BadRequestException("Expected checkout total is invalid");
+        if(Math.round(expectedTotal*100)!==Math.round(total*100)) {
+          throw new ConflictException("The final total has changed. Please review the updated order amount before placing your order.");
+        }
+      }
 
       await client.query("update checkout_sessions set subtotal=$1,discount_amount=$2,shipping_amount=$3,tax_amount=$4,inclusive_tax_amount=$5,exclusive_tax_amount=$6,total=$7,shipping_method=$8,updated_at=now() where id=$9",[subtotal,discountAmount,shippingAmount,taxAmount,inclusiveTaxAmount,exclusiveTaxAmount,total,finalShippingMethod,id]);
 

@@ -16,6 +16,16 @@ export class StorefrontService{
     private readonly db:DatabaseService,
   ){}
 
+  // Keep product editorial copy rich but prevent stored markup from executing.
+  private descriptionHtml(value:any){
+    return sanitizeHtml(String(value||""),{
+      allowedTags:["p","br","strong","b","em","i","ul","ol","li","a"],
+      allowedAttributes:{a:["href","title"]},
+      allowedSchemes:["https","http","mailto"],
+      disallowedTagsMode:"discard",
+    });
+  }
+
   private descriptionText(value:any){
     return sanitizeHtml(String(value||""),{allowedTags:[],allowedAttributes:{}})
       .replace(/\s+/g," ")
@@ -78,8 +88,8 @@ export class StorefrontService{
     const detail=await this.productsService.getStorefrontDetailByHandle(handle);
     const p=detail.product;
     const media=detail.media||[];
-    const primary=media[0]?.responsive?.pdp_desktop||media[0]?.renditions?.find((r:any)=>r.preset==="pdp_desktop"&&r.format==="webp")?.url||media[0]?.url||"";
-    const secondary=media[1]?.responsive?.pdp_desktop||media[1]?.renditions?.find((r:any)=>r.preset==="pdp_desktop"&&r.format==="webp")?.url||media[1]?.url||primary;
+    const primary=media[0]?.renditions?.find((r:any)=>r.preset==="pdp_desktop"&&r.format==="webp"&&r.url)?.url||media[0]?.responsive?.pdp_desktop||media[0]?.url||"";
+    const secondary=media[1]?.renditions?.find((r:any)=>r.preset==="pdp_desktop"&&r.format==="webp"&&r.url)?.url||media[1]?.responsive?.pdp_desktop||media[1]?.url||primary;
     const variants=(detail.variants||[]).filter((v:any)=>v.status==="active").map((v:any)=>({
       id:v.id,sku:v.sku,title:v.title,price:Number(v.price),compareAtPrice:v.compare_at_price?Number(v.compare_at_price):null,
       inventory:Number(v.inventory),status:v.status,mediaSetId:v.media_set_id,selectedOptions:v.selected_options||{},
@@ -89,9 +99,9 @@ export class StorefrontService{
 
     return {
       id:p.id,slug:p.handle,name:p.title,price:"Rs. "+Number(p.price_amount).toLocaleString("en-PK"),
-      priceAmount:Number(p.price_amount),currency:"PKR",tag:p.tag||"",image:primary,secondaryImage:secondary,
-      category:p.category||"Jewelry",story:this.descriptionText(p.description),descriptionHtml:p.description||"",material:p.material||"",
-      availability:Number(p.inventory)>0?"InStock":"OutOfStock",featured:p.featured,
+      priceAmount:Number(p.price_amount),inventory:Number(p.inventory||0),currency:"PKR",tag:p.tag||"",image:primary,secondaryImage:secondary,
+      category:p.category||"Jewelry",story:this.descriptionText(p.description),descriptionHtml:this.descriptionHtml(p.description),material:p.material||"",
+      availability:Number(p.inventory)>0?"InStock":"OutOfStock",featured:p.featured,productType:p.product_type||"",tags:detail.product.tags||[],
       options:(detail.options||[]).map((o:any)=>({id:o.id,name:o.name,isVisual:o.is_visual,values:o.values})),
       variants,
       mediaSets:(detail.mediaSets||[]).map((m:any)=>({id:m.id,name:m.name,matchOptions:m.match_options,isDefault:m.is_default})),
