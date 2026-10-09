@@ -19,6 +19,7 @@ import {EngagementModule} from "./engagement/engagement.module";
 import {OperationsModule} from "./operations/operations.module";
 import {CommerceModule} from "./commerce/commerce.module";
 import {AuthModule} from "./auth/auth.module";
+import {StorefrontAccountsModule} from "./storefront-accounts/storefront-accounts.module";
 
 @Module({
   imports:[
@@ -36,6 +37,7 @@ import {AuthModule} from "./auth/auth.module";
     CommerceModule,
     AuthModule,
     StorefrontModule,
+    StorefrontAccountsModule,
     JobsModule,
     OrdersModule,
     CustomersModule,
