@@ -28,7 +28,11 @@ export function BundleEditor({bundles,variants}:{bundles:Bundle[];variants:Varia
   const [picked,setPicked]=useState("");
   const [formResult,save,pending]=useActionState(saveBundleAction,actionState);
   const router=useRouter();
-  useEffect(()=>{if(formResult.ok)router.refresh();},[formResult,router]);
+  useEffect(()=>{
+    if(!formResult.ok)return;
+    if(formResult.bundleId)setSelected(previous=>({...previous,id:formResult.bundleId||previous.id}));
+    router.refresh();
+  },[formResult,router]);
   const byId=useMemo(()=>new Map(variants.map(v=>[v.variant_id,v])),[variants]);
   const visible=useMemo(()=>variants.filter(v=>v.variant_status==="active"&&v.product_status==="active"&&
     (v.product_title+" "+v.sku+" "+optionText(v)).toLowerCase().includes(query.toLowerCase())).slice(0,50),[variants,query]);
