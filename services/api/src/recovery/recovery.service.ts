@@ -144,7 +144,10 @@ export class RecoveryService {
     // checkout or unsubscribe while a claimed attempt is being prepared.
     const current=await this.db.query<any>("select cr.status,c.status as checkout_status,coalesce(o.email_digest is not null,false) as opted_out from checkout_recoveries cr join checkout_sessions c on c.id=cr.checkout_id left join checkout_recovery_optouts o on o.store_id=cr.store_id and o.email_digest=$3 where cr.checkout_id=$1 and cr.store_id=$2",[due.checkout_id,due.store_id,this.emailDigest(due.email_snapshot)]);
     if(!current.rowCount||current.rows[0].status!=="pending"||current.rows[0].checkout_status==="completed"||current.rows[0].opted_out){
-      await this.db.query("update checkout_recovery_attempts set status='skipped',completed_at=now() where id=$1",[due.attemptId]);
+      await this.db.transaction(async client=>{
+        await client.query("update checkout_recovery_attempts set status='skipped',completed_at=now() where id=$1",[due.attemptId]);
+        await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1 and status='pending'",[due.checkout_id]);
+      });
       continue;
     }
     try{
