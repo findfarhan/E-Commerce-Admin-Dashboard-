@@ -20,6 +20,7 @@ import {OperationsModule} from "./operations/operations.module";
 import {CommerceModule} from "./commerce/commerce.module";
 import {AuthModule} from "./auth/auth.module";
 import {StorefrontAccountsModule} from "./storefront-accounts/storefront-accounts.module";
+import {AffiliatesModule} from "./affiliates/affiliates.module";
 
 @Module({
   imports:[
@@ -38,6 +39,7 @@ import {StorefrontAccountsModule} from "./storefront-accounts/storefront-account
     AuthModule,
     StorefrontModule,
     StorefrontAccountsModule,
+    AffiliatesModule,
     JobsModule,
     OrdersModule,
     CustomersModule,

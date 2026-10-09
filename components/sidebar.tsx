@@ -6,7 +6,7 @@ const sections=[
   {label:"OVERVIEW",items:[["/","Command Center"],["/commerce","Commerce"]]},
   {label:"SALES",items:[["/orders","Orders"],["/draft-orders","Draft Orders"],["/customers","Customers"],["/returns","Returns"]]},
   {label:"CATALOG",items:[["/products","Products"],["/collections","Collections"],["/metafields","Metafields"],["/inventory","Inventory"]]},
-  {label:"OPERATIONS",items:[["/shipping-tax","Shipping & Tax"],["/purchasing","Purchasing"],["/discounts","Discounts"],["/commissions","Commissions"]]},
+  {label:"OPERATIONS",items:[["/shipping-tax","Shipping & Tax"],["/purchasing","Purchasing"],["/discounts","Discounts"],["/affiliates","Affiliates"],["/commissions","Custom Requests"]]},
   {label:"GROWTH",items:[["/audience","Audience"],["/inbox","Inbox"],["/automations","Automations"],["/analytics","Analytics"],["/channels","Channels"],["/storefront","Storefront"],["/seo","SEO / Discovery"]]},
   {label:"SYSTEM",items:[["/audit","Audit / Reports"],["/team","Team"],["/settings","Settings"]]},
 ];

@@ -381,6 +381,22 @@ export class CheckoutService{
         await client.query("update discount_codes set usage_count=usage_count+1 where id=$1",[discountRow.id]);
         await client.query("insert into discount_redemptions(discount_id,order_id,customer_id,amount) values($1,$2,$3,$4)",[discountRow.id,order.id,customer.id,discountAmount]);
       }
+      // Commission is created in the same atomic transaction as the COD order.
+      // Basis excludes shipping/tax; own purchases do not earn commissions.
+      const affiliateBasis=Math.max(0,Math.round((subtotal-discountAmount)*100)/100);
+      await client.query(
+        "insert into affiliate_commissions(store_id,affiliate_id,order_id,checkout_id,rate,basis_amount,amount,currency,status,eligible_at) "+
+        "select $1,a.id,$2,$3,a.rate,$4,round(($4::numeric*a.rate)/100,2),$5,'pending',now()+(cfg.hold_days*interval '1 day') "+
+        "from affiliate_checkout_attributions attr join affiliates a on a.id=attr.affiliate_id "+
+        "join affiliate_program_settings cfg on cfg.store_id=attr.store_id "+
+        "join storefront_accounts account on account.id=a.account_id "+
+        "where attr.checkout_id=$3 and attr.store_id=$1 and a.store_id=$1 and a.status='approved' and cfg.enabled=true "+
+        "and lower(account.email)<>lower($6) "+
+        "and (account.phone is null or length(regexp_replace(account.phone,'[^0-9]','','g'))<10 "+
+        "or right(regexp_replace(account.phone,'[^0-9]','','g'),10)<>right(regexp_replace($7::text,'[^0-9]','','g'),10)) "+
+        "on conflict(order_id) do nothing",
+        [store.id,order.id,id,affiliateBasis,order.currency,email,checkout.customer_phone]
+      );
       await client.query("insert into order_events(order_id,event_type,message,metadata) values($1,'order.created',$2,$3::jsonb)",[order.id,"Order "+orderNumber+" created from checkout",JSON.stringify({checkoutId:id,paymentMethod:"cod",isGift:Boolean(checkout.is_gift),discountCode:checkout.discount_code||null})]);
       await client.query("insert into notifications(store_id,kind,severity,title,message,resource_type,resource_id) values($1,'new_order','info',$2,$3,'order',$4)",[store.id,"New order "+orderNumber,"New storefront order for "+order.currency+" "+Number(order.total).toLocaleString(),order.id]);
       await client.query("insert into message_outbox(store_id,channel,template_key,recipient,subject,payload,status) values($1,'email','order_confirmation',$2,$3,$4::jsonb,'queued')",[store.id,email,"Order "+orderNumber+" confirmation",JSON.stringify({orderId:order.id,orderNumber,total:Number(order.total),currency:order.currency,name:checkout.customer_name})]);
