@@ -1,4 +1,4 @@
-import {BadRequestException,ConflictException,Injectable,NotFoundException} from "@nestjs/common";
+import {BadRequestException,ConflictException,Injectable,NotFoundException,ServiceUnavailableException} from "@nestjs/common";
 import {DatabaseService} from "../database/database.service";
 import {CollectionsService} from "../collections/collections.service";
 import {BundlesService} from "../bundles/bundles.service";
@@ -36,6 +36,8 @@ export class CheckoutService{
     const store=await this.store();
 
     return this.db.transaction(async client=>{
+      const bundleTablesReady=await this.bundles.schemaReady(client);
+      if(requestedBundles.length&&!bundleTablesReady)throw new ServiceUnavailableException("Jewelry sets are temporarily unavailable");
       const priced:any[]=[];
       for(const item of requested){
         const quantity=Number(item.quantity??1);
@@ -87,7 +89,9 @@ export class CheckoutService{
 
       const subtotal=priced.reduce((sum,line)=>sum+line.lineTotal,0);
       const bundleDiscount=bundleAllocations.reduce((sum,bundle)=>sum+bundle.discountAmount,0);
-      const checkout=await client.query<any>("insert into checkout_sessions(store_id,status,currency,subtotal,payment_method,discount_amount,bundle_discount_amount,total) values($1,'open',$2,$3,'cod',$4,$4,$5) returning id,status,currency,subtotal,discount_amount,bundle_discount_amount,total,expires_at,created_at",[store.id,store.currency||"PKR",subtotal,bundleDiscount,Math.max(0,subtotal-bundleDiscount)]);
+      const checkout=bundleTablesReady
+        ?await client.query<any>("insert into checkout_sessions(store_id,status,currency,subtotal,payment_method,discount_amount,bundle_discount_amount,total) values($1,'open',$2,$3,'cod',$4,$4,$5) returning id,status,currency,subtotal,discount_amount,bundle_discount_amount,total,expires_at,created_at",[store.id,store.currency||"PKR",subtotal,bundleDiscount,Math.max(0,subtotal-bundleDiscount)])
+        :await client.query<any>("insert into checkout_sessions(store_id,status,currency,subtotal,payment_method) values($1,'open',$2,$3,'cod') returning id,status,currency,subtotal,expires_at,created_at",[store.id,store.currency||"PKR",subtotal]);
 
       for(const line of priced){
         await client.query("insert into checkout_lines(checkout_id,product_id,variant_id,sku_snapshot,title_snapshot,selected_options,quantity,unit_price,line_total) values($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)",[checkout.rows[0].id,line.product_id,line.variant_id,line.sku,line.title,JSON.stringify(line.selected_options||{}),line.quantity,line.unitPrice,line.lineTotal]);
@@ -105,7 +109,9 @@ export class CheckoutService{
     const checkout=await this.db.query<any>("select * from checkout_sessions where id=$1 and store_id=$2 limit 1",[id,store.id]);
     if(!checkout.rowCount) throw new NotFoundException("Checkout not found");
     const lines=await this.db.query<any>("select id,product_id,variant_id,sku_snapshot,title_snapshot,selected_options,quantity,unit_price,line_total from checkout_lines where checkout_id=$1 order by id",[id]);
-    const bundleRows=await this.db.query<any>("select title_snapshot,quantity,gross_amount,discount_amount,component_snapshot from checkout_bundle_allocations where checkout_id=$1 order by created_at,id",[id]);
+    const bundleRows=await this.bundles.schemaReady()
+      ?await this.db.query<any>("select title_snapshot,quantity,gross_amount,discount_amount,component_snapshot from checkout_bundle_allocations where checkout_id=$1 order by created_at,id",[id])
+      :{rows:[] as any[]};
     const row=checkout.rows[0];
     // A completed checkout may be reopened via its saved URL. Only expose
     // non-sensitive order confirmation fields; never customer details here.
