@@ -281,6 +281,8 @@ export class CheckoutService{
     const recoverySchema=await client.query<{ready:boolean}>("select to_regclass('public.checkout_recoveries') is not null as ready");
     if(recoverySchema.rows[0]?.ready){
       if(body?.recoveryOptIn===true){
+        // Only one pending checkout reminder campaign per consented email/store.
+        await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where store_id=$1 and email_snapshot=$2 and checkout_id<>$3 and status='pending'",[store.id,email,id]);
         await client.query("insert into checkout_recoveries(store_id,checkout_id,email_snapshot,consent_at,consent_version,next_send_at) values($1,$2,$3,now(),'v1',now()+interval '1 hour') on conflict(checkout_id) do update set email_snapshot=excluded.email_snapshot,consent_at=excluded.consent_at,consent_version=excluded.consent_version,status='pending',send_step=0,next_send_at=excluded.next_send_at,updated_at=now() where checkout_recoveries.send_step=0",[store.id,id,email]);
       }else{
         await client.query("update checkout_recoveries set status='suppressed',next_send_at=null,updated_at=now() where checkout_id=$1 and store_id=$2 and status='pending'",[id,store.id]);
