@@ -109,6 +109,21 @@ export class StorefrontAccountsService{
     const row=changed.rows[0];
     return {id:row.id,email:row.email,name:row.display_name,phone:row.phone};
   }
+  async changePassword(token:string|undefined,body:any){
+    const a=await this.requireAccount(token);
+    const oldPassword=String(body?.currentPassword||"");
+    const newPassword=String(body?.newPassword||"");
+    if(newPassword.length<12||newPassword.length>128) throw new BadRequestException("Use a password between 12 and 128 characters");
+    if(oldPassword===newPassword) throw new BadRequestException("Choose a different password");
+    const stored=await this.db.query<{password_hash:string}>("select password_hash from storefront_accounts where id=$1 and store_id=$2",[a.id,a.store_id]);
+    if(!stored.rowCount||!await this.matches(oldPassword,stored.rows[0].password_hash)) throw new UnauthorizedException("Current password is incorrect");
+    const hash=await this.passwordHash(newPassword);
+    await this.db.transaction(async client=>{
+      await client.query("update storefront_accounts set password_hash=$1,updated_at=now() where id=$2 and store_id=$3",[hash,a.id,a.store_id]);
+      await client.query("delete from storefront_account_sessions where account_id=$1 and token_digest<>$2",[a.id,this.digest(token!)]);
+    });
+    return {ok:true};
+  }
   async addresses(token?:string){
     const a=await this.requireAccount(token);
     const result=await this.db.query<any>(
@@ -143,9 +158,16 @@ export class StorefrontAccountsService{
   }
   async deleteAddress(token:string|undefined,id:string){
     const a=await this.requireAccount(token);
-    const result=await this.db.query<any>("delete from storefront_account_addresses where id=$1 and account_id=$2 returning id",[id,a.id]);
-    if(!result.rowCount) throw new NotFoundException("Address not found");
-    return {ok:true};
+    return this.db.transaction(async client=>{
+      await client.query("select id from storefront_accounts where id=$1 for update",[a.id]);
+      const removed=await client.query<{id:string;is_default:boolean}>(
+        "delete from storefront_account_addresses where id=$1 and account_id=$2 returning id,is_default",[id,a.id]);
+      if(!removed.rowCount) throw new NotFoundException("Address not found");
+      if(removed.rows[0].is_default){
+        await client.query("update storefront_account_addresses set is_default=true where id=(select id from storefront_account_addresses where account_id=$1 order by created_at limit 1)",[a.id]);
+      }
+      return {ok:true};
+    });
   }
   async claimOrder(token:string|undefined,body:any){
     const a=await this.requireAccount(token);
