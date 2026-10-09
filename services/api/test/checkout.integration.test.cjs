@@ -139,6 +139,14 @@ test("anonymous analytics events require explicit consent and deduplicate retrie
  assert.equal(summary.funnel.productViews,1);
 });
 
+test("anonymous analytics old event rows are automatically expired after 90 days",async()=>{
+ const id=randomUUID(),sessionId=randomUUID();
+ await analytics.record({type:"page_view",eventId:id,sessionId,analyticsConsent:true,path:"/"});
+ await pool.query("update analytics_events set occurred_at=now()-interval '95 days' where event_id=$1",[id]);
+ await analytics.expireOldAnonymousEvents();
+ assert.equal((await one("select count(*)::int n from analytics_events")).n,0);
+});
+
 test("checkouts are never subscribed to recovery emails without opt-in",async()=>{
  const session=await checkout.create({items:[{variantId:fixture.variantId,quantity:1}]});
  await checkout.setCustomer(session.id,customer());
