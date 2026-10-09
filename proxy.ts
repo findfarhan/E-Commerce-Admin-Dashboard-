@@ -7,6 +7,7 @@ function requiredPermission(path:string){
   if(path.startsWith("/orders")||path.startsWith("/draft-orders")||path.startsWith("/returns")) return "orders";
   if(path.startsWith("/inventory")||path.startsWith("/purchasing")) return "inventory";
   if(path.startsWith("/customers")||path.startsWith("/inbox")||path.startsWith("/commissions")) return "crm";
+  if(path.startsWith("/affiliates")) return "marketing";
   if(path.startsWith("/discounts")||path.startsWith("/shipping-tax")||path.startsWith("/seo")||path.startsWith("/channels")) return "marketing";
   if(path.startsWith("/analytics")) return "analytics";
   return "dashboard";
@@ -17,6 +18,7 @@ function authorized(permissions:string[],permission:string,method:string){
   return permissions.includes(permission);
 }
 function secureHeaders(response:NextResponse){
+  response.headers.set("Cache-Control","private, no-store");
   response.headers.set("X-Frame-Options","DENY");
   response.headers.set("X-Content-Type-Options","nosniff");
   response.headers.set("Referrer-Policy","no-referrer");
@@ -24,7 +26,7 @@ function secureHeaders(response:NextResponse){
   return response;
 }
 
-export async function middleware(request:NextRequest){
+export async function proxy(request:NextRequest){
   const path=request.nextUrl.pathname;
   if(path==="/login"||path.startsWith("/login/")||path==="/setup"||path.startsWith("/setup/")) return secureHeaders(NextResponse.next());
 
@@ -58,4 +60,4 @@ export async function middleware(request:NextRequest){
   loginUrl.searchParams.set("next",path);
   return secureHeaders(NextResponse.redirect(loginUrl));
 }
-export const config={matcher:["/api/:path*"]};
+export const config={matcher:["/((?!_next/static|_next/image|_next/data|favicon.ico|icon.svg|robots.txt|sitemap.xml|manifest.webmanifest).*)"]};

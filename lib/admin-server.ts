@@ -6,11 +6,9 @@ const apiBase=(process.env.NEXT_PUBLIC_API_URL||"https://e-commerce-admin-dashbo
 export async function adminMutation<T=any>(path:string,init:RequestInit={}):Promise<T>{
   const jar=await cookies();
   const token=jar.get("jc_session")?.value;
-  const adminKey=process.env.ADMIN_API_KEY;
-  if(!token&&!adminKey) throw new Error("Admin authentication is not configured.");
-  const authHeaders:Record<string,string>={};
-  if(token) authHeaders.Authorization="Bearer "+token;
-  else if(adminKey) authHeaders["X-Admin-Key"]=adminKey;
+  // Staff mutations must never use an environment-wide admin key as fallback.
+  if(!token) throw new Error("Authenticated staff session is required.");
+  const authHeaders:Record<string,string>={Authorization:"Bearer "+token};
   const response=await fetch(apiBase+path,{
     ...init,
     headers:{
