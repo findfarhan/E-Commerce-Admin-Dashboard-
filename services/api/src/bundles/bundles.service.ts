@@ -74,7 +74,7 @@ export class BundlesService{
     const storeId=await this.storeId();
     const r=await this.db.query<BundleRow>("select * from jewelry_bundles where store_id=$1 and status='active' and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) order by created_at desc limit 80",[storeId]);
     const catalog=await this.products.listStorefront();
-    const byHandle=new Map(catalog.map((x:any)=>[x.slug,x]));
+    const byHandle=new Map<string,any>(catalog.map((x:any)=>[String(x.slug),x] as const));
     const items=[];
     for(const row of r.rows){
       const item=await this.describe(row,true);
