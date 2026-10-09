@@ -4,10 +4,18 @@ import {BundleEditor} from "@/components/bundle-editor";
 import {adminRequest} from "@/lib/admin-api";
 import "./bundles.css";
 export default async function BundlesPage(){
-  const [bundleResult,variantResult]=await Promise.all([
-    adminRequest<{items:any[]}>("/v1/admin/bundles"),
-    adminRequest<{items:any[]}>("/v1/admin/bundles/variants"),
-  ]);
+  // An unactivated migration must not crash the catalog admin UI.
+  let bundleResult:{items:any[]}|null=null;
+  let variantResult:{items:any[]}|null=null;
+  try{
+    [bundleResult,variantResult]=await Promise.all([
+      adminRequest<{items:any[]}>("/v1/admin/bundles"),
+      adminRequest<{items:any[]}>("/v1/admin/bundles/variants"),
+    ]);
+  }catch{
+    bundleResult=null;
+    variantResult=null;
+  }
   if(!bundleResult||!variantResult){
     return <section className="panel" style={{padding:32}}>
       <h2>Bundle management is not ready</h2>
