@@ -223,7 +223,7 @@ export class StorefrontAccountsService{
     if(!product.rowCount) throw new NotFoundException("Product not found");
     const productId=product.rows[0].id;
     const owned=await this.db.query(
-      "select 1 from storefront_account_orders l join orders o on o.id=l.order_id join order_items oi on oi.order_id=o.id where l.account_id=$1 and o.store_id=$2 and oi.product_id=$3 and o.status<>'canceled' limit 1",
+      "select 1 from storefront_account_orders l join orders o on o.id=l.order_id join order_items oi on oi.order_id=o.id where l.account_id=$1 and o.store_id=$2 and oi.product_id=$3 and o.status<>'canceled' and (o.fulfillment_status in ('fulfilled','returned') or o.payment_status='paid') limit 1",
       [a.id,a.store_id,productId]
     );
     if(!owned.rowCount) throw new ForbiddenException("Link a completed purchase to review this product");
